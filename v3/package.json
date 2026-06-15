@@ -1,0 +1,37 @@
+{
+  "name": "vscode-ext-v3",
+  "publisher": "local",
+  "displayName": "VSCode Ext V3",
+  "description": "A VS Code extension with file export and merge export - completely emoji-free.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "smart-exporter.exportFiles",
+        "title": "Smart Exporter: Export Files"
+      },
+      {
+        "command": "smart-exporter.mergeExport",
+        "title": "Smart Exporter: Merge & Export"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.3"
+  }
+}
