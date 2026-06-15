@@ -45,7 +45,12 @@ class FileScanner {
     async scan(paths) {
         const results = [];
         for (const p of paths) {
-            await this.traverse(p, results);
+            try {
+                await this.traverse(p, results);
+            }
+            catch {
+                // Fail-safe file access bounds handling
+            }
         }
         return results;
     }

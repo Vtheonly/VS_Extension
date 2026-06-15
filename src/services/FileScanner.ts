@@ -12,7 +12,11 @@ export class FileScanner implements IFileScanner {
     public async scan(paths: string[]): Promise<string[]> {
         const results: string[] = [];
         for (const p of paths) {
-            await this.traverse(p, results);
+            try {
+                await this.traverse(p, results);
+            } catch {
+                // Fail-safe file access bounds handling
+            }
         }
         return results;
     }

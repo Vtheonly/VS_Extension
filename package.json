@@ -25,7 +25,7 @@
     "commands": [
       {
         "command": "smart-exporter.exportFiles",
-        "title": "Smart Exporter: Export Files"
+        "title": "Smart Exporter: Dashboard Hub"
       },
       {
         "command": "smart-exporter.mergeExport",
