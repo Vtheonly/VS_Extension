@@ -2,7 +2,7 @@
   "name": "vscode-ext-v2",
   "publisher": "local",
   "displayName": "VSCode Ext V2",
-  "description": "A VS Code extension with file export, merge export, and emoji purge capabilities.",
+  "description": "A VS Code extension with file export, merge export, emoji purge, split vault, merge vault, mermaid fixing, quiz validation, and renaming capabilities.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"
@@ -25,6 +25,26 @@
       {
         "command": "smart-exporter.purgeEmojis",
         "title": "Smart Exporter: Purge Emojis"
+      },
+      {
+        "command": "smart-exporter.splitVault",
+        "title": "Smart Exporter: Split Vault Document"
+      },
+      {
+        "command": "smart-exporter.mergeVault",
+        "title": "Smart Exporter: Merge Vault Workspace"
+      },
+      {
+        "command": "smart-exporter.fixMermaid",
+        "title": "Smart Exporter: Fix Mermaid Diagrams"
+      },
+      {
+        "command": "smart-exporter.validateQuizzes",
+        "title": "Smart Exporter: Validate Quiz Files"
+      },
+      {
+        "command": "smart-exporter.renameFiles",
+        "title": "Smart Exporter: Safe Renamer"
       }
     ]
   },

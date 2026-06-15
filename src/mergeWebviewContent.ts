@@ -1,5 +1,4 @@
 export function getMergeWebviewContent(files: string[]): string {
-    // Convert flat list of paths to a tree structure
     const tree: any = {};
     files.forEach(pathStr => {
         const parts = pathStr.split('/');
@@ -12,7 +11,6 @@ export function getMergeWebviewContent(files: string[]): string {
         });
     });
 
-    // Recursive function to generate HTML for the tree
     function generateTreeHtml(node: any, pathPrefix: string = ''): string {
         let html = '<ul class="tree-list">';
         const keys = Object.keys(node).sort((a, b) => {
@@ -36,7 +34,7 @@ export function getMergeWebviewContent(files: string[]): string {
                             <input type="checkbox" class="folder-checkbox" data-path="${fullPath}" checked>
                             <span class="checkmark"></span>
                         </label>
-                        <span class="icon folder-icon"></span>
+                        <span class="folder-icon"></span>
                         <span class="label">${key}</span>
                     </div>
                     ${generateTreeHtml(node[key], fullPath)}
@@ -49,7 +47,7 @@ export function getMergeWebviewContent(files: string[]): string {
                             <input type="checkbox" class="file-checkbox" value="${fullPath}" checked>
                             <span class="checkmark"></span>
                         </label>
-                        <span class="icon file-icon"></span>
+                        <span class="file-icon"></span>
                         <span class="label">${key}</span>
                     </div>
                 `;
@@ -104,7 +102,6 @@ export function getMergeWebviewContent(files: string[]): string {
             gap: 12px;
             margin-bottom: 20px;
         }
-        .header-icon { font-size: 28px; }
         .header h2 {
             color: var(--text-bright);
             font-weight: 600;
@@ -182,7 +179,25 @@ export function getMergeWebviewContent(files: string[]): string {
             box-shadow: 0 0 12px var(--accent-glow);
         }
         .mode-card input[type="radio"] { display: none; }
-        .mode-card .mode-icon { font-size: 20px; margin-bottom: 4px; }
+        .mode-card .mode-icon {
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 28px;
+        }
+        .mode-card .mode-icon svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .mode-card.selected .mode-icon svg {
+            stroke: var(--text-bright);
+        }
         .mode-card .mode-label {
             font-size: 12px;
             font-weight: 600;
@@ -257,15 +272,6 @@ export function getMergeWebviewContent(files: string[]): string {
             cursor: not-allowed;
             box-shadow: none;
         }
-        button.nuclear {
-            background: linear-gradient(135deg, #c04040, #f44747);
-            color: white;
-            border: none;
-            font-weight: 600;
-        }
-        button.nuclear:hover {
-            box-shadow: 0 2px 12px rgba(244,71,71,0.3);
-        }
 
         .toolbar-spacer { flex: 1; }
 
@@ -331,9 +337,50 @@ export function getMergeWebviewContent(files: string[]): string {
         .toggle-icon.collapsed { transform: rotate(-90deg); }
         .spacer { width: 18px; }
 
-        .icon { margin: 0 5px; font-size: 15px; }
         .label { font-size: 13px; white-space: nowrap; }
         .label .highlight { background-color: rgba(255,200,0,0.3); border-radius: 2px; }
+
+        /* Custom Pure CSS Folder & File Icons */
+        .folder-icon {
+            display: inline-block;
+            width: 14px;
+            height: 10px;
+            background-color: var(--accent);
+            border-radius: 1px 3px 2px 2px;
+            position: relative;
+            margin: 0 6px;
+        }
+        .folder-icon::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: 0;
+            width: 6px;
+            height: 3px;
+            background-color: var(--accent);
+            border-radius: 1px 1px 0 0;
+        }
+        .file-icon {
+            display: inline-block;
+            width: 10px;
+            height: 13px;
+            border: 1.5px solid var(--text-color);
+            border-radius: 1px;
+            position: relative;
+            margin: 0 6px;
+            opacity: 0.8;
+        }
+        .file-icon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 3px 3px 0;
+            border-color: transparent var(--text-color) transparent transparent;
+        }
 
         /* Checkbox Styles */
         .checkbox-container {
@@ -426,42 +473,41 @@ export function getMergeWebviewContent(files: string[]): string {
             align-items: center;
             gap: 8px;
         }
-        .info-banner .info-icon { font-size: 16px; }
+        .info-banner .info-icon { font-weight: bold; color: var(--accent); }
     </style>
 </head>
 <body>
     <div class="header">
-        <span class="header-icon"></span>
         <h2>Merge & Export</h2>
         <span class="badge">SMART EXPORTER</span>
     </div>
 
     <div class="info-banner">
-        <span class="info-icon"></span>
+        <span class="info-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
         <span>Select files and folders below, then choose a merge mode. Files will be combined into structured text files with headers, tree diagrams, and full source contents.</span>
     </div>
 
     <div class="settings-panel">
-        <h3> Export Settings</h3>
+        <h3><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Export Settings</h3>
         <div class="settings-row">
             <div class="setting-group">
                 <label>Export Mode</label>
                 <div class="mode-options">
                     <label class="mode-card selected" data-mode="folder">
                         <input type="radio" name="mode" value="folder" checked>
-                        <div class="mode-icon"></div>
+                        <div class="mode-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
                         <div class="mode-label">Per Folder</div>
                         <div class="mode-desc">One file per folder</div>
                     </label>
                     <label class="mode-card" data-mode="multi">
                         <input type="radio" name="mode" value="multi">
-                        <div class="mode-icon"></div>
+                        <div class="mode-icon"><svg viewBox="0 0 24 24"><path d="M2 4h6v6H2zM16 4h6v6h-6zM9 14h6v6H9zM2 17h4M18 17h4M12 8v4"/></svg></div>
                         <div class="mode-label">Multi-Folder</div>
                         <div class="mode-desc">Merge folders together</div>
                     </label>
                     <label class="mode-card" data-mode="nuclear">
                         <input type="radio" name="mode" value="nuclear">
-                        <div class="mode-icon"></div>
+                        <div class="mode-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/><line x1="2" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="22" y2="12"/></svg></div>
                         <div class="mode-label">Nuclear</div>
                         <div class="mode-desc">Entire project as one</div>
                     </label>
@@ -481,12 +527,12 @@ export function getMergeWebviewContent(files: string[]): string {
     </div>
 
     <div class="toolbar">
-        <button id="expandAllBtn">V Expand All</button>
-        <button id="collapseAllBtn"> Collapse All</button>
-        <button id="selectAllBtn"> Select All</button>
-        <button id="deselectAllBtn"> Deselect All</button>
+        <button id="expandAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All</button>
+        <button id="collapseAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All</button>
+        <button id="selectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 16 10"/></svg>Select All</button>
+        <button id="deselectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Deselect All</button>
         <span class="toolbar-spacer"></span>
-        <input type="text" class="search-box" id="searchBox" placeholder="  Search files...">
+        <input type="text" class="search-box" id="searchBox" placeholder="Search files...">
     </div>
 
     <div class="tree-container">
@@ -499,7 +545,7 @@ export function getMergeWebviewContent(files: string[]): string {
             <span class="stat-item"><span class="stat-dot size"></span> ~<span id="estSize">0</span> KB est.</span>
             <span class="stat-item"><span class="stat-dot parts"></span> ~<span id="estParts">1</span> output file(s)</span>
         </div>
-        <button id="mergeBtn" class="primary"> Merge & Export</button>
+        <button id="mergeBtn" class="primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Merge & Export</button>
     </div>
 
     <script>
@@ -515,7 +561,6 @@ export function getMergeWebviewContent(files: string[]): string {
         const deselectAllBtn = document.getElementById('deselectAllBtn');
         const searchBox = document.getElementById('searchBox');
 
-        // -- Mode Selection -------------------------------
         const modeCards = document.querySelectorAll('.mode-card');
         let currentMode = 'folder';
 
@@ -532,7 +577,6 @@ export function getMergeWebviewContent(files: string[]): string {
 
         fileLimitInput.addEventListener('input', () => { updateStats(); });
 
-        // -- Tree Toggle ----------------------------------
         document.querySelectorAll('.toggle-icon').forEach(icon => {
             icon.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -592,7 +636,6 @@ export function getMergeWebviewContent(files: string[]): string {
             updateStats();
         });
 
-        // -- Search / Filter ------------------------------
         searchBox.addEventListener('input', () => {
             const query = searchBox.value.toLowerCase().trim();
             document.querySelectorAll('.tree-item').forEach(item => {
@@ -608,13 +651,11 @@ export function getMergeWebviewContent(files: string[]): string {
 
                 if (text.includes(query)) {
                     item.classList.remove('hidden');
-                    // Highlight match
                     const idx = text.indexOf(query);
                     const orig = label.textContent;
                     label.innerHTML = orig.substring(0, idx) +
                         '<span class="highlight">' + orig.substring(idx, idx + query.length) + '</span>' +
                         orig.substring(idx + query.length);
-                    // Show parent folders
                     let parent = item.closest('ul');
                     while (parent) {
                         if (parent.style.display === 'none') {
@@ -628,14 +669,12 @@ export function getMergeWebviewContent(files: string[]): string {
                         parent = parentItem ? parentItem.closest('ul') : null;
                     }
                 } else {
-                    // Only hide files; folders will be shown if they have matching children
                     if (item.classList.contains('file-item')) {
                         item.classList.add('hidden');
                     }
                 }
             });
 
-            // Hide folders with no visible children
             if (query) {
                 document.querySelectorAll('.folder-item').forEach(folder => {
                     const li = folder.closest('li');
@@ -647,20 +686,17 @@ export function getMergeWebviewContent(files: string[]): string {
             }
         });
 
-        // -- Checkbox Cascading ---------------------------
         document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', (e) => {
                 const isChecked = e.target.checked;
                 const li = e.target.closest('li');
 
-                // Propagate DOWN
                 const children = li.querySelectorAll('input[type="checkbox"]');
                 children.forEach(child => {
                     child.checked = isChecked;
                     child.indeterminate = false;
                 });
 
-                // Propagate UP
                 updateParents(li);
                 updateStats();
             });
@@ -698,15 +734,13 @@ export function getMergeWebviewContent(files: string[]): string {
             updateParents(parentLi);
         }
 
-        // -- Stats ----------------------------------------
         function updateStats() {
             const checkedFiles = document.querySelectorAll('.file-checkbox:checked');
             const count = checkedFiles.length;
             fileCountEl.textContent = count;
 
-            // Rough estimate: average ~2KB per file
-            const avgFileSize = 2; // KB
-            const headerOverhead = 0.5; // KB per file for headers/separators
+            const avgFileSize = 2;
+            const headerOverhead = 0.5;
             const totalEstKB = Math.round(count * (avgFileSize + headerOverhead));
             estSizeEl.textContent = totalEstKB;
 
@@ -721,7 +755,6 @@ export function getMergeWebviewContent(files: string[]): string {
             }
         }
 
-        // -- Export ----------------------------------------
         mergeBtn.addEventListener('click', () => {
             const selectedFiles = [];
             document.querySelectorAll('.file-checkbox:checked').forEach(cb => {
@@ -738,7 +771,6 @@ export function getMergeWebviewContent(files: string[]): string {
             });
         });
 
-        // Initialize
         updateStats();
     </script>
 </body>

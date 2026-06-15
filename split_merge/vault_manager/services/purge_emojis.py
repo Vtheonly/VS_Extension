@@ -162,7 +162,7 @@ class EmojiPurgeService(IContentTransformer):
             return True
         if basename in text_filenames:
             return True
-        # No extension — check if binary by looking for null bytes
+        # No extension - check if binary by looking for null bytes
         if not ext:
             try:
                 with open(filepath, 'rb') as f:

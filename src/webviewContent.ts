@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 
 export function getWebviewContent(files: string[]): string {
-    // Convert flat list of paths to a tree structure
     const tree: any = {};
     files.forEach(pathStr => {
         const parts = pathStr.split('/');
@@ -14,10 +13,8 @@ export function getWebviewContent(files: string[]): string {
         });
     });
 
-    // Recursive function to generate HTML for the tree
     function generateTreeHtml(node: any, pathPrefix: string = ''): string {
         let html = '<ul class="tree-list">';
-        // Sort keys: folders first, then files
         const keys = Object.keys(node).sort((a, b) => {
             const aIsFolder = node[a] !== null;
             const bIsFolder = node[b] !== null;
@@ -39,7 +36,7 @@ export function getWebviewContent(files: string[]): string {
                             <input type="checkbox" class="folder-checkbox" data-path="${fullPath}" checked>
                             <span class="checkmark"></span>
                         </label>
-                        <span class="icon folder-icon"></span>
+                        <span class="folder-icon"></span>
                         <span class="label">${key}</span>
                     </div>
                     ${generateTreeHtml(node[key], fullPath)}
@@ -52,7 +49,7 @@ export function getWebviewContent(files: string[]): string {
                             <input type="checkbox" class="file-checkbox" value="${fullPath}" checked>
                             <span class="checkmark"></span>
                         </label>
-                        <span class="icon file-icon"></span>
+                        <span class="file-icon"></span>
                         <span class="label">${key}</span>
                     </div>
                 `;
@@ -83,7 +80,7 @@ export function getWebviewContent(files: string[]): string {
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             padding: 20px;
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -131,7 +128,6 @@ export function getWebviewContent(files: string[]): string {
             padding-left: 20px;
             margin: 0;
         }
-        /* Root level list has no padding */
         .tree-container > ul.tree-list { padding-left: 0; }
 
         li { margin: 2px 0; }
@@ -156,8 +152,49 @@ export function getWebviewContent(files: string[]): string {
         .toggle-icon.collapsed { transform: rotate(-90deg); }
         .spacer { width: 20px; }
 
-        .icon { margin: 0 6px; font-size: 16px; }
         .label { font-size: 13px; white-space: nowrap; }
+
+        /* Custom Pure CSS Icons */
+        .folder-icon {
+            display: inline-block;
+            width: 14px;
+            height: 10px;
+            background-color: var(--accent-color);
+            border-radius: 1px 3px 2px 2px;
+            position: relative;
+            margin: 0 6px;
+        }
+        .folder-icon::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: 0;
+            width: 6px;
+            height: 3px;
+            background-color: var(--accent-color);
+            border-radius: 1px 1px 0 0;
+        }
+        .file-icon {
+            display: inline-block;
+            width: 10px;
+            height: 13px;
+            border: 1.5px solid var(--text-color);
+            border-radius: 1px;
+            position: relative;
+            margin: 0 6px;
+            opacity: 0.8;
+        }
+        .file-icon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 3px 3px 0;
+            border-color: transparent var(--text-color) transparent transparent;
+        }
 
         /* Checkbox Styles */
         .checkbox-container {
@@ -190,7 +227,6 @@ export function getWebviewContent(files: string[]): string {
             background-color: var(--accent-color);
             border-color: var(--accent-color);
         }
-        /* Indeterminate State */
         .checkbox-container input:indeterminate ~ .checkmark {
             background-color: var(--accent-color);
             border-color: var(--accent-color);
@@ -204,7 +240,6 @@ export function getWebviewContent(files: string[]): string {
         .checkbox-container input:checked ~ .checkmark:after { display: block; }
         .checkbox-container input:indeterminate ~ .checkmark:after { display: block; }
 
-        /* Checkmark Icon */
         .checkbox-container .checkmark:after {
             left: 5px;
             top: 1px;
@@ -214,7 +249,6 @@ export function getWebviewContent(files: string[]): string {
             border-width: 0 2px 2px 0;
             transform: rotate(45deg);
         }
-        /* Indeterminate Dash */
         .checkbox-container input:indeterminate ~ .checkmark:after {
             left: 3px;
             top: 6px;
@@ -239,8 +273,8 @@ export function getWebviewContent(files: string[]): string {
     <h2>Select Files to Export</h2>
     
     <div class="controls">
-        <button id="expandAllBtn">Expand All</button>
-        <button id="collapseAllBtn">Collapse All</button>
+        <button id="expandAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All</button>
+        <button id="collapseAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All</button>
     </div>
 
     <div class="tree-container">
@@ -249,7 +283,7 @@ export function getWebviewContent(files: string[]): string {
 
     <div class="footer">
         <span class="count-label" id="countLabel">0 files selected</span>
-        <button id="exportBtn" class="primary">Export Selected</button>
+        <button id="exportBtn" class="primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export Selected</button>
     </div>
 
     <script>
@@ -259,10 +293,9 @@ export function getWebviewContent(files: string[]): string {
         const expandAllBtn = document.getElementById('expandAllBtn');
         const collapseAllBtn = document.getElementById('collapseAllBtn');
 
-        // --- Tree Toggle Logic ---
         document.querySelectorAll('.toggle-icon').forEach(icon => {
             icon.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent triggering row click
+                e.stopPropagation();
                 toggleNode(icon);
             });
         });
@@ -303,23 +336,17 @@ export function getWebviewContent(files: string[]): string {
             });
         });
 
-
-        // --- Checkbox Cascading Logic ---
-        
-        // 1. Handle Folder/File Checkbox Click
         document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', (e) => {
                 const isChecked = e.target.checked;
                 const li = e.target.closest('li');
                 
-                // Propagate DOWN: Select/Deselect all children
                 const children = li.querySelectorAll('input[type="checkbox"]');
                 children.forEach(child => {
                     child.checked = isChecked;
                     child.indeterminate = false;
                 });
 
-                // Propagate UP: Update parent states
                 updateParents(li);
                 updateCount();
             });
@@ -327,10 +354,10 @@ export function getWebviewContent(files: string[]): string {
 
         function updateParents(element) {
             const parentUl = element.closest('ul');
-            if (!parentUl) return; // Reached root
+            if (!parentUl) return;
 
             const parentLi = parentUl.closest('li');
-            if (!parentLi) return; // Reached root container
+            if (!parentLi) return;
 
             const parentCheckbox = parentLi.querySelector(':scope > .tree-item > .checkbox-container > input');
             if (!parentCheckbox) return;
@@ -338,12 +365,10 @@ export function getWebviewContent(files: string[]): string {
             const siblings = parentUl.querySelectorAll(':scope > li > .tree-item > .checkbox-container > input');
             let allChecked = true;
             let allUnchecked = true;
-            let anyIndeterminate = false;
 
             siblings.forEach(sib => {
                 if (!sib.checked) allChecked = false;
                 if (sib.checked || sib.indeterminate) allUnchecked = false;
-                if (sib.indeterminate) anyIndeterminate = true;
             });
 
             if (allChecked) {
@@ -357,14 +382,13 @@ export function getWebviewContent(files: string[]): string {
                 parentCheckbox.indeterminate = true;
             }
 
-            // Recursively update upwards
             updateParents(parentLi);
         }
 
         function updateCount() {
             const checkedFiles = document.querySelectorAll('.file-checkbox:checked');
             const count = checkedFiles.length;
-            countLabel.textContent = \`\${count} files selected\`;
+            countLabel.textContent = count + ' files selected';
             
             if (count === 0) {
                 exportBtn.disabled = true;
@@ -389,7 +413,6 @@ export function getWebviewContent(files: string[]): string {
             });
         });
 
-        // Initialize
         updateCount();
     </script>
 </body>

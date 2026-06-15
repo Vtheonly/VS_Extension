@@ -1,10 +1,20 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
+import { FileScanner } from './services/FileScanner';
+import { ClassicExportPipeline } from './services/ClassicExportPipeline';
+import { MergeExportPipeline } from './services/MergeExportPipeline';
+import { EmojiPurgeService } from './emojiPurgeService';
 import { getWebviewContent } from './webviewContent';
 import { getMergeWebviewContent } from './mergeWebviewContent';
-import { EmojiPurgeService, PurgeSummary } from './emojiPurgeService';
+
+// New services
+import { VaultSplitter } from './services/VaultSplitter';
+import { VaultMerger } from './services/VaultMerger';
+import { MermaidFixer } from './services/MermaidFixer';
+import { QuizValidator } from './services/QuizValidator';
+import { FileRenamer } from './services/FileRenamer';
+import { SplitRule } from './core/interfaces';
 
 // --- Shared Constants --------------------------------------------------------
 
@@ -27,29 +37,27 @@ const EXCLUDE_DIRS = new Set([
     'dist', 'build', 'target', '.idea', '.vscode'
 ]);
 
-// --- Shared Helpers ----------------------------------------------------------
-
-function shouldIncludeFile(filePath: string): boolean {
-    const basename = path.basename(filePath);
-    const ext = path.extname(filePath);
-    if (ALLOWED_EXTENSIONS.has(ext)) { return true; }
-    if (ALLOWED_FILENAMES.has(basename)) { return true; }
-    if (basename.startsWith('.env')) { return true; }
-    return false;
-}
-
-async function traverseFiles(currentPath: string, results: string[]): Promise<void> {
-    const stat = await fs.promises.stat(currentPath);
-    if (stat.isDirectory()) {
-        if (EXCLUDE_DIRS.has(path.basename(currentPath))) { return; }
-        const children = await fs.promises.readdir(currentPath);
-        for (const child of children) {
-            await traverseFiles(path.join(currentPath, child), results);
-        }
-    } else if (stat.isFile() && shouldIncludeFile(currentPath)) {
-        results.push(currentPath);
+// Default split rules
+const DEFAULT_SPLIT_RULES: SplitRule[] = [
+    {
+        type: 'chapter',
+        pattern: '^#\\s+Chapter\\s+(\\d+)\\.\\s*(.*)',
+        folder_format: 'Chapter {g1}. {g2}',
+        file_format: '00 Introduction.md'
+    },
+    {
+        type: 'section',
+        pattern: '^##\\s+(\\d+)\\.\\s*(.*)',
+        folder_format: '',
+        file_format: '{g1}. {g2}.md'
     }
-}
+];
+
+// --- Dependency Orchestration ------------------------------------------------
+
+const fileScanner = new FileScanner(ALLOWED_EXTENSIONS, ALLOWED_FILENAMES, EXCLUDE_DIRS);
+const classicExporter = new ClassicExportPipeline();
+const mergeExporter = new MergeExportPipeline();
 
 async function pickAndScan(): Promise<{ rootPath: string; files: string[] } | undefined> {
     if (!vscode.workspace.workspaceFolders) {
@@ -73,9 +81,9 @@ async function pickAndScan(): Promise<{ rootPath: string; files: string[] } | un
         title: "Scanning files...",
         cancellable: false
     }, async () => {
-        for (const uri of selectedUris) {
-            await traverseFiles(uri.fsPath, files);
-        }
+        const paths = selectedUris.map(uri => uri.fsPath);
+        const scanned = await fileScanner.scan(paths);
+        files.push(...scanned);
     });
 
     if (files.length === 0) {
@@ -86,11 +94,127 @@ async function pickAndScan(): Promise<{ rootPath: string; files: string[] } | un
     return { rootPath, files };
 }
 
-// --- Extension Activation ----------------------------------------------------
+// Simple YAML parsers
+function parseYamlSplitRules(yamlContent: string): SplitRule[] | null {
+    const rules: SplitRule[] = [];
+    const lines = yamlContent.split(/\r?\n/);
+    let inRules = false;
+    let currentRule: Partial<SplitRule> = {};
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('rules:')) {
+            inRules = true;
+            continue;
+        }
+        if (inRules) {
+            if (trimmed.startsWith('-')) {
+                if (currentRule.pattern) {
+                    rules.push(currentRule as SplitRule);
+                }
+                currentRule = {};
+            }
+            
+            const match = /^\s*-\s*(\w+):\s*(.*)/.exec(line) || /^\s*(\w+):\s*(.*)/.exec(line);
+            if (match) {
+                const key = match[1];
+                let val = match[2].trim();
+                if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                    val = val.slice(1, -1);
+                }
+                if (match[2].startsWith('"')) {
+                    val = val.replace(/\\\\/g, '\\');
+                }
+                if (key === 'type') currentRule.type = val;
+                else if (key === 'pattern') currentRule.pattern = val;
+                else if (key === 'folder_format') currentRule.folder_format = val;
+                else if (key === 'file_format') currentRule.file_format = val;
+            }
+        }
+    }
+    if (currentRule.pattern) {
+        rules.push(currentRule as SplitRule);
+    }
+    return rules.length > 0 ? rules : null;
+}
+
+function parseYamlRenameConfigs(yamlContent: string): Record<string, any> | null {
+    const configs: Record<string, any> = {};
+    const lines = yamlContent.split(/\r?\n/);
+    let inRename = false;
+    let currentPipeline = '';
+    let currentMapping: Record<string, string> = {};
+    let inMapping = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (line.startsWith('rename:')) {
+            inRename = true;
+            continue;
+        }
+        if (inRename) {
+            if (line.length > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+                inRename = false;
+                continue;
+            }
+
+            const pipelineMatch = /^  (\w+):/.exec(line);
+            if (pipelineMatch) {
+                if (currentPipeline && Object.keys(currentMapping).length > 0) {
+                    configs[currentPipeline].mapping = currentMapping;
+                }
+                currentPipeline = pipelineMatch[1];
+                configs[currentPipeline] = {};
+                currentMapping = {};
+                inMapping = false;
+                continue;
+            }
+
+            if (currentPipeline) {
+                const fieldMatch = /^\s*(\w+):\s*(.*)/.exec(line);
+                if (fieldMatch) {
+                    const key = fieldMatch[1];
+                    let val = fieldMatch[2].trim();
+                    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                        val = val.slice(1, -1);
+                    }
+                    if (key === 'mapping') {
+                        inMapping = true;
+                        continue;
+                    }
+                    if (!inMapping) {
+                        configs[currentPipeline][key] = val;
+                    }
+                }
+
+                if (inMapping && trimmed) {
+                    const mapMatch = /^\s*(["']?.*?["']?):\s*(["']?.*?["']?)$/.exec(line);
+                    if (mapMatch) {
+                        let k = mapMatch[1].trim();
+                        let v = mapMatch[2].trim();
+                        if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+                            k = k.slice(1, -1);
+                        }
+                        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+                            v = v.slice(1, -1);
+                        }
+                        currentMapping[k] = v;
+                    }
+                }
+            }
+        }
+    }
+
+    if (currentPipeline && Object.keys(currentMapping).length > 0) {
+        configs[currentPipeline].mapping = currentMapping;
+    }
+
+    return Object.keys(configs).length > 0 ? configs : null;
+}
 
 export function activate(context: vscode.ExtensionContext) {
 
-    // > Original Export Command -----------------------------------------------
+    // --- Classic Exporter command ------------------------------------------
     const exportCmd = vscode.commands.registerCommand('smart-exporter.exportFiles', async () => {
         const result = await pickAndScan();
         if (!result) { return; }
@@ -107,13 +231,13 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.onDidReceiveMessage(async message => {
             if (message.command === 'export') {
                 const abs = (message.files as string[]).map(p => path.join(rootPath, p));
-                await processExport(abs, rootPath);
+                await classicExporter.execute(abs, rootPath);
                 panel.dispose();
             }
         }, undefined, context.subscriptions);
     });
 
-    // > Merge & Export Command ------------------------------------------------
+    // --- Merge & Exporter command -----------------------------------------
     const mergeCmd = vscode.commands.registerCommand('smart-exporter.mergeExport', async () => {
         const result = await pickAndScan();
         if (!result) { return; }
@@ -130,23 +254,22 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.onDidReceiveMessage(async message => {
             if (message.command === 'mergeExport') {
                 const selectedRelative: string[] = message.files;
-                const mode: string = message.mode;        // 'folder' | 'multi' | 'nuclear'
+                const mode: string = message.mode;
                 const limitKB: number = message.fileLimitKB || 500;
 
                 const absPaths = selectedRelative.map(p => path.join(rootPath, p));
-                await processMergeExport(absPaths, rootPath, mode, limitKB);
+                await mergeExporter.execute(absPaths, rootPath, mode, limitKB);
                 panel.dispose();
             }
         }, undefined, context.subscriptions);
     });
 
-    // > Purge Emojis Command ------------------------------------------------
+    // --- Emoji Purging Tool command -----------------------------------------
     const purgeCmd = vscode.commands.registerCommand('smart-exporter.purgeEmojis', async () => {
         if (!vscode.workspace.workspaceFolders) {
             vscode.window.showErrorMessage('Please open a folder or workspace first.');
             return;
         }
-        const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
         const selectedUris = await vscode.window.showOpenDialog({
             canSelectMany: true,
@@ -159,14 +282,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         const selectedPaths = selectedUris.map(uri => uri.fsPath);
 
-        // Create output channel for logging
         const outputChannel = vscode.window.createOutputChannel('Emoji Purge');
         outputChannel.show(true);
         outputChannel.appendLine('=== Emoji Purge Service ===');
         outputChannel.appendLine(`Scanning ${selectedPaths.length} path(s)...`);
         outputChannel.appendLine('');
 
-        // Run the purge with progress
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: 'Purging emojis...',
@@ -186,7 +307,6 @@ export function activate(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`Emojis removed:  ${summary.totalEmojisRemoved}`);
             outputChannel.appendLine('');
 
-            // List all modified files
             if (summary.filesModified > 0) {
                 outputChannel.appendLine('=== Modified Files ===');
                 for (const r of summary.results) {
@@ -197,7 +317,6 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('');
             }
 
-            // List errors
             const errors = summary.results.filter(r => !r.success);
             if (errors.length > 0) {
                 outputChannel.appendLine('=== Errors ===');
@@ -207,7 +326,6 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('');
             }
 
-            // Show result message
             if (summary.filesModified > 0) {
                 vscode.window.showInformationMessage(
                     `Purge complete: ${summary.totalEmojisRemoved} emoji chars removed from ${summary.filesModified} file(s). See output panel for details.`
@@ -218,294 +336,411 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
 
-    context.subscriptions.push(exportCmd, mergeCmd, purgeCmd);
-}
-
-// --- Original Export Logic (unchanged) ---------------------------------------
-
-async function processExport(files: string[], rootPath: string) {
-    const basenameMap = new Map<string, string[]>();
-    for (const filePath of files) {
-        const base = path.basename(filePath);
-        if (!basenameMap.has(base)) { basenameMap.set(base, []); }
-        basenameMap.get(base)!.push(filePath);
-    }
-
-    const homeDir = os.homedir();
-    const projectName = path.basename(rootPath);
-    const timestamp = new Date().toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
-    const dstDir = path.join(homeDir, 'Downloads', `${projectName}_${timestamp}`);
-    if (!fs.existsSync(dstDir)) { fs.mkdirSync(dstDir, { recursive: true }); }
-
-    const projectStructureLines: string[] = [];
-
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification, title: "Exporting files...", cancellable: false
-    }, async () => {
-        for (const [basename, paths] of basenameMap.entries()) {
-            if (paths.length === 1) {
-                const srcPath = paths[0];
-                await fs.promises.copyFile(srcPath, path.join(dstDir, basename + '.txt'));
-                projectStructureLines.push(path.relative(rootPath, srcPath).split(path.sep).join('/'));
-            } else {
-                for (const srcPath of paths) {
-                    let relPath = path.relative(rootPath, srcPath);
-                    if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
-                        relPath = srcPath.replace(/^([a-zA-Z]:\\|\/)/, '');
-                    }
-                    const safeName = relPath.split(path.sep).join('_') + '.txt';
-                    await fs.promises.copyFile(srcPath, path.join(dstDir, safeName));
-                    projectStructureLines.push(path.relative(rootPath, srcPath).split(path.sep).join('/'));
-                }
-            }
-        }
-        await fs.promises.writeFile(path.join(dstDir, 'project_structure.txt'), projectStructureLines.join('\n'), 'utf8');
-    });
-
-    vscode.window.showInformationMessage(`Exported ${files.length} files -> ${dstDir}`);
-}
-
-// --- Merge & Export Logic ----------------------------------------------------
-
-/**
- * Build a visual ASCII tree from a list of relative paths.
- */
-function buildTreeDiagram(relativePaths: string[]): string {
-    interface TreeNode { [key: string]: TreeNode | null; }
-    const root: TreeNode = {};
-
-    for (const p of relativePaths) {
-        const parts = p.split('/');
-        let cur: TreeNode = root;
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            if (i === parts.length - 1) {
-                cur[part] = null;          // file leaf
-            } else {
-                if (!cur[part]) { cur[part] = {}; }
-                cur = cur[part] as TreeNode;
-            }
-        }
-    }
-
-    function render(node: TreeNode, prefix: string): string[] {
-        const lines: string[] = [];
-        const entries = Object.keys(node).sort((a, b) => {
-            const aDir = node[a] !== null;
-            const bDir = node[b] !== null;
-            if (aDir && !bDir) { return -1; }
-            if (!aDir && bDir) { return 1; }
-            return a.localeCompare(b);
+    // --- Split Vault Document command ---------------------------------------
+    const splitVaultCmd = vscode.commands.registerCommand('smart-exporter.splitVault', async () => {
+        const sourceUris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Select Markdown File to Split',
+            filters: { 'Markdown': ['md', 'markdown'] }
         });
+        if (!sourceUris || sourceUris.length === 0) { return; }
+        const sourceFile = sourceUris[0].fsPath;
 
-        entries.forEach((key, idx) => {
-            const isLast = idx === entries.length - 1;
-            const connector = isLast ? '\-- ' : '|-- ';
-            const child = node[key];
-            if (child !== null) {
-                lines.push(`${prefix}${connector} ${key}/`);
-                const newPrefix = prefix + (isLast ? '    ' : '|   ');
-                lines.push(...render(child, newPrefix));
-            } else {
-                lines.push(`${prefix}${connector}${key}`);
-            }
+        const targetUris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Select Target Folder for Split Segments',
+            canSelectFiles: false,
+            canSelectFolders: true
         });
-        return lines;
-    }
+        if (!targetUris || targetUris.length === 0) { return; }
+        const targetDir = targetUris[0].fsPath;
 
-    return render(root, '').join('\n');
-}
-
-/**
- * Return a language hint for a file extension (used in output headers).
- */
-function langHint(filePath: string): string {
-    const map: Record<string, string> = {
-        '.ts': 'typescript', '.tsx': 'tsx', '.js': 'javascript', '.jsx': 'jsx',
-        '.py': 'python', '.java': 'java', '.c': 'c', '.cpp': 'cpp',
-        '.h': 'c', '.hpp': 'cpp', '.cs': 'csharp', '.go': 'go',
-        '.rs': 'rust', '.rb': 'ruby', '.php': 'php', '.swift': 'swift',
-        '.kt': 'kotlin', '.scala': 'scala', '.sh': 'bash', '.bash': 'bash',
-        '.zsh': 'zsh', '.html': 'html', '.htm': 'html', '.css': 'css',
-        '.scss': 'scss', '.sass': 'sass', '.less': 'less', '.xml': 'xml',
-        '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.json': 'json',
-        '.md': 'markdown', '.sql': 'sql', '.r': 'r', '.R': 'r',
-        '.lua': 'lua', '.tex': 'latex',
-    };
-    return map[path.extname(filePath)] || 'text';
-}
-
-/**
- * Group files by their top-level directory for "folder" mode.
- */
-function groupByFolder(relPaths: string[]): Map<string, string[]> {
-    const groups = new Map<string, string[]>();
-    for (const p of relPaths) {
-        const parts = p.split('/');
-        const folder = parts.length > 1 ? parts[0] : '.';
-        if (!groups.has(folder)) { groups.set(folder, []); }
-        groups.get(folder)!.push(p);
-    }
-    return groups;
-}
-
-/**
- * Build the header block for one merged output file.
- */
-function buildHeader(projectName: string, sourcePaths: string[], partNum: number, totalParts: number, dateStr: string): string {
-    const sourceLabel = sourcePaths.length === 1
-        ? sourcePaths[0]
-        : `${sourcePaths.length} paths (${sourcePaths.slice(0, 3).join(', ')}${sourcePaths.length > 3 ? '...' : ''})`;
-    const partLabel = totalParts > 1 ? `Part ${partNum} of ${totalParts}` : 'Complete';
-
-    const lines = [
-        `+${'='.repeat(70)}+`,
-        `|  MERGED CODE EXPORT${' '.repeat(51)}|`,
-        `|  Project:  ${(projectName).padEnd(58)}|`,
-        `|  Source:   ${(sourceLabel).padEnd(58)}|`,
-        `|  Date:     ${(dateStr).padEnd(58)}|`,
-        `|  Status:   ${(partLabel).padEnd(58)}|`,
-        `+${'='.repeat(70)}+`,
-    ];
-    return lines.join('\n');
-}
-
-/**
- * Build the content block for a single source file, including its separator / header.
- */
-function buildFileBlock(relPath: string, content: string): string {
-    const sep = '='.repeat(72);
-    const lang = langHint(relPath);
-    return [
-        '',
-        sep,
-        ` FILE: ${relPath}`,
-        `   Language: ${lang}`,
-        sep,
-        '',
-        content,
-    ].join('\n');
-}
-
-/**
- * Core merge-export pipeline.
- */
-async function processMergeExport(
-    absPaths: string[],
-    rootPath: string,
-    mode: string,
-    limitKB: number
-) {
-    const projectName = path.basename(rootPath);
-    const dateStr = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
-    const timestamp = dateStr.replace(/[: ]/g, '-');
-
-    // Destination folder
-    const dstDir = path.join(os.homedir(), 'Downloads', `${projectName}_merged_${timestamp}`);
-    if (!fs.existsSync(dstDir)) { fs.mkdirSync(dstDir, { recursive: true }); }
-
-    // Read all file contents upfront
-    const relPaths = absPaths.map(p => path.relative(rootPath, p).split(path.sep).join('/'));
-    const fileContents = new Map<string, string>();
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification, title: "Reading files...", cancellable: false
-    }, async () => {
-        for (let i = 0; i < absPaths.length; i++) {
+        let rules = DEFAULT_SPLIT_RULES;
+        let configPath = path.join(path.dirname(sourceFile), 'config.yaml');
+        if (!fs.existsSync(configPath) && vscode.workspace.workspaceFolders) {
+            configPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'config.yaml');
+        }
+        if (fs.existsSync(configPath)) {
             try {
-                const content = await fs.promises.readFile(absPaths[i], 'utf8');
-                fileContents.set(relPaths[i], content);
-            } catch {
-                fileContents.set(relPaths[i], '// [Error reading file]');
-            }
+                const configContent = fs.readFileSync(configPath, 'utf8');
+                rules = parseYamlSplitRules(configContent) || DEFAULT_SPLIT_RULES;
+            } catch (e) { }
         }
-    });
 
-    // Determine groups based on mode
-    let groups: Map<string, string[]>;
-    if (mode === 'nuclear') {
-        groups = new Map([['(entire project)', relPaths]]);
-    } else if (mode === 'multi') {
-        groups = new Map([['(selected folders)', relPaths]]);
-    } else {
-        // 'folder' mode - one group per top-level directory
-        groups = groupByFolder(relPaths);
-    }
+        const outputChannel = vscode.window.createOutputChannel('Vault Splitter');
+        outputChannel.show(true);
+        outputChannel.appendLine('=== Vault Splitter ===');
+        outputChannel.appendLine(`Source file: ${sourceFile}`);
+        outputChannel.appendLine(`Target directory: ${targetDir}`);
+        outputChannel.appendLine('');
 
-    const limitBytes = limitKB * 1024;
-    let totalOutputFiles = 0;
+        try {
+            const content = fs.readFileSync(sourceFile, 'utf8');
+            const splitter = new VaultSplitter();
+            const segments = splitter.parse(content, rules);
 
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification, title: "Merging & exporting...", cancellable: false
-    }, async () => {
-        for (const [groupName, groupFiles] of groups.entries()) {
-            // Build per-file blocks
-            const blocks: { relPath: string; text: string; size: number }[] = [];
-            for (const rel of groupFiles) {
-                const content = fileContents.get(rel) || '';
-                const text = buildFileBlock(rel, content);
-                blocks.push({ relPath: rel, text, size: Buffer.byteLength(text, 'utf8') });
-            }
-
-            // Split into parts based on the limit
-            const parts: { relPath: string; text: string }[][] = [[]];
-            let currentPartSize = 0;
-
-            for (const block of blocks) {
-                // If adding this block exceeds limit AND current part is non-empty, start new part
-                if (currentPartSize + block.size > limitBytes && parts[parts.length - 1].length > 0) {
-                    parts.push([]);
-                    currentPartSize = 0;
+            outputChannel.appendLine(`Parsed ${segments.length} segments.`);
+            
+            for (const segment of segments) {
+                const destFolder = path.join(targetDir, segment.folder);
+                if (!fs.existsSync(destFolder)) {
+                    fs.mkdirSync(destFolder, { recursive: true });
                 }
-                parts[parts.length - 1].push(block);
-                currentPartSize += block.size;
+                const destFile = path.join(destFolder, segment.filename);
+                fs.writeFileSync(destFile, segment.content, 'utf8');
+                outputChannel.appendLine(`  Created: ${path.join(segment.folder, segment.filename)}`);
             }
 
-            const totalParts = parts.length;
+            vscode.window.showInformationMessage(`Successfully split into ${segments.length} segments in ${targetDir}`);
+        } catch (err: any) {
+            outputChannel.appendLine(`Error: ${err.message}`);
+            vscode.window.showErrorMessage(`Split failed: ${err.message}`);
+        }
+    });
 
-            // Derive a safe filename prefix from the group name
-            const safeGroup = groupName.replace(/[^a-zA-Z0-9_\-.]/g, '_').replace(/_+/g, '_');
+    // --- Merge Vault Workspace command ---------------------------------------
+    const mergeVaultCmd = vscode.commands.registerCommand('smart-exporter.mergeVault', async () => {
+        const sourceUris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Select Markdown File to Split and Merge',
+            filters: { 'Markdown': ['md', 'markdown'] }
+        });
+        if (!sourceUris || sourceUris.length === 0) { return; }
+        const sourceFile = sourceUris[0].fsPath;
 
-            for (let partIdx = 0; partIdx < totalParts; partIdx++) {
-                const partFiles = parts[partIdx];
-                const partRelPaths = partFiles.map(b => b.relPath);
+        const targetUris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: 'Select Workspace Folder to Merge into',
+            canSelectFiles: false,
+            canSelectFolders: true
+        });
+        if (!targetUris || targetUris.length === 0) { return; }
+        const targetDir = targetUris[0].fsPath;
 
-                const header = buildHeader(projectName, [groupName], partIdx + 1, totalParts, dateStr);
-                const treeDiagram = buildTreeDiagram(partRelPaths);
+        const strategy = await vscode.window.showQuickPick(
+            [
+                { label: 'side_by_side', description: 'Append (Vault 1) suffix to conflicting filenames' },
+                { label: 'overwrite', description: 'Replace any conflicting files' },
+                { label: 'skip', description: 'Skip new conflicting files, keep existing' }
+            ],
+            { placeHolder: 'Select a file collision strategy' }
+        );
+        if (!strategy) { return; }
 
-                const fullContent = [
-                    header,
-                    '',
-                    ' FOLDER STRUCTURE',
-                    '-------------------',
-                    treeDiagram,
-                    '',
-                    `This file contains the full source code of: ${groupName}`,
-                    `Project root: ${rootPath}`,
-                    `Total files in this part: ${partFiles.length}`,
-                    '',
-                    ...partFiles.map(b => b.text),
-                    '',
-                    `${'='.repeat(72)}`,
-                    `End of merged export - ${groupName} - Part ${partIdx + 1} of ${totalParts}`,
-                    `${'='.repeat(72)}`,
-                ].join('\n');
+        const outputChannel = vscode.window.createOutputChannel('Vault Merger');
+        outputChannel.show(true);
+        outputChannel.appendLine('=== Vault Merger ===');
+        outputChannel.appendLine(`Source file: ${sourceFile}`);
+        outputChannel.appendLine(`Target workspace: ${targetDir}`);
+        outputChannel.appendLine(`Collision strategy: ${strategy.label}`);
+        outputChannel.appendLine('');
 
-                const fileName = totalParts > 1
-                    ? `${safeGroup}_part_${partIdx + 1}.txt`
-                    : `${safeGroup}.txt`;
-                await fs.promises.writeFile(path.join(dstDir, fileName), fullContent, 'utf8');
-                totalOutputFiles++;
+        try {
+            const content = fs.readFileSync(sourceFile, 'utf8');
+            let rules = DEFAULT_SPLIT_RULES;
+            
+            let configPath = path.join(path.dirname(sourceFile), 'config.yaml');
+            if (!fs.existsSync(configPath) && vscode.workspace.workspaceFolders) {
+                configPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'config.yaml');
+            }
+            if (fs.existsSync(configPath)) {
+                try {
+                    const configContent = fs.readFileSync(configPath, 'utf8');
+                    rules = parseYamlSplitRules(configContent) || DEFAULT_SPLIT_RULES;
+                } catch (e) { }
+            }
+
+            const splitter = new VaultSplitter();
+            const segments = splitter.parse(content, rules);
+
+            const merger = new VaultMerger();
+            const writtenCount = await merger.merge(segments, targetDir, strategy.label as any);
+
+            outputChannel.appendLine(`Processed ${segments.length} segments.`);
+            outputChannel.appendLine(`Wrote/merged ${writtenCount} files into the target workspace.`);
+
+            vscode.window.showInformationMessage(`Merge complete. Wrote ${writtenCount} files to ${targetDir}`);
+        } catch (err: any) {
+            outputChannel.appendLine(`Error: ${err.message}`);
+            vscode.window.showErrorMessage(`Merge failed: ${err.message}`);
+        }
+    });
+
+    // --- Fix Mermaid Diagrams command ---------------------------------------
+    const fixMermaidCmd = vscode.commands.registerCommand('smart-exporter.fixMermaid', async () => {
+        if (!vscode.workspace.workspaceFolders) {
+            vscode.window.showErrorMessage('Please open a folder or workspace first.');
+            return;
+        }
+
+        const selectedUris = await vscode.window.showOpenDialog({
+            canSelectMany: true,
+            openLabel: 'Fix Mermaid Diagrams',
+            canSelectFiles: true,
+            canSelectFolders: true,
+            defaultUri: vscode.workspace.workspaceFolders[0].uri
+        });
+        if (!selectedUris || selectedUris.length === 0) { return; }
+
+        const selectedPaths = selectedUris.map(uri => uri.fsPath);
+        const outputChannel = vscode.window.createOutputChannel('Mermaid Fixer');
+        outputChannel.show(true);
+        outputChannel.appendLine('=== Mermaid Fixer ===');
+        outputChannel.appendLine(`Scanning ${selectedPaths.length} path(s)...`);
+        outputChannel.appendLine('');
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Fixing Mermaid diagrams...',
+            cancellable: false
+        }, async () => {
+            const files = await fileScanner.scan(selectedPaths);
+            const mdFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.markdown'));
+            const fixer = new MermaidFixer();
+            let modifiedCount = 0;
+
+            for (const f of mdFiles) {
+                try {
+                    const content = fs.readFileSync(f, 'utf8');
+                    const fixed = fixer.transform(content);
+                    if (fixed !== content) {
+                        fs.writeFileSync(f, fixed, 'utf8');
+                        modifiedCount++;
+                        const relPath = vscode.workspace.workspaceFolders ? path.relative(vscode.workspace.workspaceFolders[0].uri.fsPath, f) : f;
+                        outputChannel.appendLine(`  Cleaned & Updated: ${relPath}`);
+                    }
+                } catch (e: any) {
+                    outputChannel.appendLine(`  Failed to process ${f}: ${e.message}`);
+                }
+            }
+
+            outputChannel.appendLine('');
+            outputChannel.appendLine('=== Summary ===');
+            outputChannel.appendLine(`Files scanned:   ${mdFiles.length}`);
+            outputChannel.appendLine(`Files modified:  ${modifiedCount}`);
+
+            vscode.window.showInformationMessage(`Mermaid formatting complete. Cleaned and saved ${modifiedCount} file(s).`);
+        });
+    });
+
+    // --- Validate Quiz Files command -----------------------------------------
+    const validateQuizzesCmd = vscode.commands.registerCommand('smart-exporter.validateQuizzes', async () => {
+        if (!vscode.workspace.workspaceFolders) {
+            vscode.window.showErrorMessage('Please open a folder or workspace first.');
+            return;
+        }
+
+        const selectedUris = await vscode.window.showOpenDialog({
+            canSelectMany: true,
+            openLabel: 'Validate Quiz Files',
+            canSelectFiles: true,
+            canSelectFolders: true,
+            defaultUri: vscode.workspace.workspaceFolders[0].uri
+        });
+        if (!selectedUris || selectedUris.length === 0) { return; }
+
+        const selectedPaths = selectedUris.map(uri => uri.fsPath);
+        const outputChannel = vscode.window.createOutputChannel('Semantic Quiz Validator');
+        outputChannel.show(true);
+        outputChannel.appendLine('=== Semantic Quiz Validator ===');
+        outputChannel.appendLine(`Scanning ${selectedPaths.length} path(s)...`);
+        outputChannel.appendLine('');
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Validating quizzes...',
+            cancellable: false
+        }, async () => {
+            const files = await fileScanner.scan(selectedPaths);
+            const mdFiles = files.filter(f => f.endsWith('.md') || f.endsWith('.markdown'));
+            const validator = new QuizValidator();
+            let passedCount = 0;
+            let failedCount = 0;
+
+            for (const f of mdFiles) {
+                try {
+                    const report = await validator.validateFile(f);
+                    const relPath = vscode.workspace.workspaceFolders ? path.relative(vscode.workspace.workspaceFolders[0].uri.fsPath, f) : f;
+                    if (report.isValid) {
+                        outputChannel.appendLine(`[PASSED] ${relPath}`);
+                        outputChannel.appendLine(`  Stats: TF: ${report.stats.true_false}, MC: ${report.stats.multiple_choice}, Match: ${report.stats.matching}`);
+                        passedCount++;
+                    } else {
+                        outputChannel.appendLine(`[FAILED] ${relPath}`);
+                        for (const [line, err] of report.errors) {
+                            outputChannel.appendLine(`  - Line ~${line}: ERROR: ${err}`);
+                        }
+                        for (const [line, warn] of report.warnings) {
+                            outputChannel.appendLine(`  - Line ~${line}: WARNING: ${warn}`);
+                        }
+                        failedCount++;
+                    }
+                } catch (e: any) {
+                    outputChannel.appendLine(`[ERROR] Failed to validate ${f}: ${e.message}`);
+                    failedCount++;
+                }
+            }
+
+            outputChannel.appendLine('');
+            outputChannel.appendLine('=== Validation Summary ===');
+            outputChannel.appendLine(`Total files checked: ${mdFiles.length}`);
+            outputChannel.appendLine(`Passed:              ${passedCount}`);
+            outputChannel.appendLine(`Failed:              ${failedCount}`);
+
+            if (failedCount > 0) {
+                vscode.window.showErrorMessage(`Quiz validation failed: ${failedCount} files failed validation checks. See output panel for details.`);
+            } else {
+                vscode.window.showInformationMessage(`Quiz validation complete. All ${passedCount} files passed validation.`);
+            }
+        });
+    });
+
+    // --- Safe Renamer command -----------------------------------------------
+    const renameFilesCmd = vscode.commands.registerCommand('smart-exporter.renameFiles', async () => {
+        if (!vscode.workspace.workspaceFolders) {
+            vscode.window.showErrorMessage('Please open a folder or workspace first.');
+            return;
+        }
+
+        let configPath = '';
+        if (vscode.workspace.workspaceFolders) {
+            configPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'config.yaml');
+        }
+
+        let renameConfigs: Record<string, any> = {};
+        if (fs.existsSync(configPath)) {
+            try {
+                const configContent = fs.readFileSync(configPath, 'utf8');
+                renameConfigs = parseYamlRenameConfigs(configContent) || {};
+            } catch (e) { }
+        }
+
+        const options = [];
+        for (const key of Object.keys(renameConfigs)) {
+            options.push({
+                label: `Pipeline: ${key}`,
+                description: `Rename using configuration pipeline from config.yaml`,
+                pipelineKey: key
+            });
+        }
+        options.push({
+            label: 'Custom Regex Rename',
+            description: 'Define a custom search pattern and replacement format',
+            pipelineKey: ''
+        });
+
+        const selected = await vscode.window.showQuickPick(options, { placeHolder: 'Select a renaming pipeline' });
+        if (!selected) return;
+
+        const outputChannel = vscode.window.createOutputChannel('Safe Renamer');
+        outputChannel.show(true);
+        outputChannel.appendLine('=== Safe Atomic Renamer ===');
+
+        const renamer = new FileRenamer();
+
+        if (selected.pipelineKey) {
+            const pConf = renameConfigs[selected.pipelineKey];
+            const targetDir = pConf.target_dir;
+            const strategy = pConf.strategy || 'map';
+
+            if (!fs.existsSync(targetDir)) {
+                vscode.window.showErrorMessage(`Target directory does not exist: ${targetDir}`);
+                return;
+            }
+
+            const filesInDir = fs.readdirSync(targetDir);
+            let mapping: Record<string, string> = {};
+
+            if (strategy === 'map') {
+                mapping = renamer.generateMapMapping(filesInDir, pConf.mapping || {});
+            } else if (strategy === 'regex_pattern') {
+                mapping = renamer.generateRegexMapping(filesInDir, pConf.pattern || '', pConf.format || '');
+            }
+
+            if (Object.keys(mapping).length === 0) {
+                vscode.window.showWarningMessage('No matching files found to rename.');
+                return;
+            }
+
+            outputChannel.appendLine(`Pipeline: ${selected.pipelineKey}`);
+            outputChannel.appendLine(`Target Directory: ${targetDir}`);
+            outputChannel.appendLine(`Renaming ${Object.keys(mapping).length} file(s)...`);
+            for (const [o, n] of Object.entries(mapping)) {
+                outputChannel.appendLine(`  ${o} -> ${n}`);
+            }
+
+            try {
+                await renamer.executeRename(targetDir, mapping);
+                vscode.window.showInformationMessage(`Successfully renamed ${Object.keys(mapping).length} files.`);
+            } catch (err: any) {
+                outputChannel.appendLine(`Error: ${err.message}`);
+                vscode.window.showErrorMessage(`Rename failed: ${err.message}`);
+            }
+        } else {
+            const targetUris = await vscode.window.showOpenDialog({
+                canSelectMany: false,
+                openLabel: 'Select Directory to Rename Files in',
+                canSelectFiles: false,
+                canSelectFolders: true
+            });
+            if (!targetUris || targetUris.length === 0) return;
+            const targetDir = targetUris[0].fsPath;
+
+            const pattern = await vscode.window.showInputBox({
+                prompt: 'Enter search regex pattern (e.g. ^Chapter (\\d+) - (.*)\\.md)',
+                placeHolder: '^Chapter (\\d+) - (.*)\\.md'
+            });
+            if (!pattern) return;
+
+            const format = await vscode.window.showInputBox({
+                prompt: 'Enter replacement format (use {g1}, {g2} for matching groups, e.g. Ch {g1} - {g2}.md)',
+                placeHolder: 'Ch {g1} - {g2}.md'
+            });
+            if (!format) return;
+
+            const filesInDir = fs.readdirSync(targetDir);
+            let mapping: Record<string, string> = {};
+            try {
+                mapping = renamer.generateRegexMapping(filesInDir, pattern, format);
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Invalid pattern: ${e.message}`);
+                return;
+            }
+
+            if (Object.keys(mapping).length === 0) {
+                vscode.window.showWarningMessage('No matching files found to rename.');
+                return;
+            }
+
+            outputChannel.appendLine(`Custom Regex Rename`);
+            outputChannel.appendLine(`Target Directory: ${targetDir}`);
+            outputChannel.appendLine(`Pattern: ${pattern}`);
+            outputChannel.appendLine(`Format: ${format}`);
+            outputChannel.appendLine(`Renaming ${Object.keys(mapping).length} file(s)...`);
+            for (const [o, n] of Object.entries(mapping)) {
+                outputChannel.appendLine(`  ${o} -> ${n}`);
+            }
+
+            try {
+                await renamer.executeRename(targetDir, mapping);
+                vscode.window.showInformationMessage(`Successfully renamed ${Object.keys(mapping).length} files.`);
+            } catch (err: any) {
+                outputChannel.appendLine(`Error: ${err.message}`);
+                vscode.window.showErrorMessage(`Rename failed: ${err.message}`);
             }
         }
     });
 
-    vscode.window.showInformationMessage(
-        ` Merged ${relPaths.length} files into ${totalOutputFiles} output file(s) -> ${dstDir}`
+    context.subscriptions.push(
+        exportCmd,
+        mergeCmd,
+        purgeCmd,
+        splitVaultCmd,
+        mergeVaultCmd,
+        fixMermaidCmd,
+        validateQuizzesCmd,
+        renameFilesCmd
     );
-
-    // Open the output folder in the OS file manager
-    const uri = vscode.Uri.file(dstDir);
-    vscode.env.openExternal(uri);
 }
 
-export function deactivate() { }
+export function deactivate() {}

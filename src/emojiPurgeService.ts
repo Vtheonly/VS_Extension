@@ -1,119 +1,110 @@
-/**
- * Emoji Purging Service.
- * TypeScript port of the Python EmojiPurgeService from split_merge.
- * Removes all emoji characters from file content with binary-safe file detection.
- */
-
 import * as fs from 'fs';
 import * as path from 'path';
+import { IEmojiPurgeService } from './core/interfaces';
 
-// Comprehensive emoji regex covering all Unicode emoji ranges (ported from Python)
 const EMOJI_REGEX = new RegExp(
     '['
-    + '\u{1F600}-\u{1F64F}'  // Emoticons
-    + '\u{1F300}-\u{1F5FF}'  // Misc Symbols and Pictographs
-    + '\u{1F680}-\u{1F6FF}'  // Transport and Map
-    + '\u{1F700}-\u{1F77F}'  // Alchemical Symbols
-    + '\u{1F780}-\u{1F7FF}'  // Geometric Shapes Extended
-    + '\u{1F800}-\u{1F8FF}'  // Supplemental Arrows-C
-    + '\u{1F900}-\u{1F9FF}'  // Supplemental Symbols and Pictographs
-    + '\u{1FA00}-\u{1FA6F}'  // Chess Symbols
-    + '\u{1FA70}-\u{1FAFF}'  // Symbols and Pictographs Extended-A
-    + '\u{2702}-\u{27B0}'    // Dingbats
-    + '\u{27BF}'             // Dingbat arrow
-    + '\u{FE00}-\u{FE0F}'    // Variation Selectors
-    + '\u{200D}'             // Zero Width Joiner
-    + '\u{2600}-\u{26FF}'    // Misc Symbols
-    + '\u{2300}-\u{23FF}'    // Misc Technical
-    + '\u{2B50}'             // Star
-    + '\u{2B05}-\u{2B07}'    // Arrows
-    + '\u{2934}-\u{2935}'    // Arrows
-    + '\u{3030}'             // Wavy dash
-    + '\u{25AA}-\u{25AB}'    // Small squares
-    + '\u{25FB}-\u{25FE}'    // Medium squares
-    + '\u{25B6}'             // Play button
-    + '\u{25C0}'             // Reverse play
-    + '\u{203C}'             // Double exclamation
-    + '\u{2049}'             // Exclamation question
-    + '\u{2139}'             // Info
-    + '\u{2194}-\u{2199}'    // Arrows
-    + '\u{21A9}-\u{21AA}'    // Arrows
-    + '\u{231A}-\u{231B}'    // Watch, Hourglass
-    + '\u{23E9}-\u{23F3}'    // Media controls
-    + '\u{23F8}-\u{23FA}'    // Media controls
-    + '\u{24C2}'             // Circled M
-    + '\u{2660}'             // Spade
-    + '\u{2663}'             // Club
-    + '\u{2665}-\u{2666}'    // Heart, Diamond
-    + '\u{2668}'             // Hot springs
-    + '\u{267B}'             // Recycling
-    + '\u{267F}'             // Wheelchair
-    + '\u{2692}-\u{2697}'    // Tools
-    + '\u{2699}'             // Gear
-    + '\u{269B}-\u{269C}'    // Atom, Fleur-de-lis
-    + '\u{26A0}-\u{26A1}'    // Warning, Zap
-    + '\u{26AA}-\u{26AB}'    // Circles
-    + '\u{26B0}-\u{26B1}'    // Coffin, Urn
-    + '\u{26BD}-\u{26BE}'    // Soccer, Baseball
-    + '\u{26C4}-\u{26C5}'    // Snowman, Sun
-    + '\u{26CE}'             // Ophiuchus
-    + '\u{26CF}-\u{26D4}'    // Tools, No entry
-    + '\u{26E9}-\u{26EA}'    // Shinto, Church
-    + '\u{26F0}-\u{26F5}'    // Mountain, Sailboat
-    + '\u{26F7}-\u{26FA}'    // Skier, Tent
-    + '\u{26FD}'             // Fuel pump
-    + '\u{2702}'             // Scissors
-    + '\u{2705}'             // Check mark
-    + '\u{2708}-\u{270D}'    // Airplane, Writing hand
-    + '\u{270F}'             // Pencil
-    + '\u{2712}'             // Black nib
-    + '\u{2714}'             // Check mark
-    + '\u{2716}'             // Cross mark
-    + '\u{271D}'             // Latin cross
-    + '\u{2721}'             // Star of David
-    + '\u{2728}'             // Sparkles
-    + '\u{2733}-\u{2734}'    // Eight spoked asterisk
-    + '\u{2744}'             // Snowflake
-    + '\u{2747}'             // Sparkle
-    + '\u{274C}'             // Cross mark
-    + '\u{274E}'             // Cross mark
-    + '\u{2753}-\u{2755}'    // Question marks
-    + '\u{2757}'             // Exclamation
-    + '\u{2763}-\u{2764}'    // Heart exclamation, Heart
-    + '\u{2795}-\u{2797}'    // Plus, Minus, Divide
-    + '\u{27A1}'             // Right arrow
-    + '\u{2934}-\u{2935}'    // Curved arrows
-    + '\u{2B05}-\u{2B07}'    // Arrows
-    + '\u{2B1B}-\u{2B1C}'    // Black/white squares
-    + '\u{2B55}'             // Circle
-    + '\u{1F004}'             // Mahjong
-    + '\u{1F0CF}'             // Playing card
-    + '\u{1F170}-\u{1F171}'  // A/B buttons
-    + '\u{1F17E}-\u{1F17F}'  // O/P buttons
-    + '\u{1F18E}'             // AB button
-    + '\u{1F191}-\u{1F19A}'  // Squared words
-    + '\u{1F1E0}-\u{1F1FF}'  // Regional indicators (flags)
-    + '\u{1F201}-\u{1F202}'  // Japanese symbols
-    + '\u{1F21A}'             // Japanese "free"
-    + '\u{1F22F}'             // Japanese "congratulations"
-    + '\u{1F232}-\u{1F23A}'  // Japanese symbols
-    + '\u{1F250}-\u{1F251}'  // Japanese symbols
-    + '\u{E0020}-\u{E007F}'  // Tags (flag sequences)
-    + '\u{FE0F}'             // Variation selector-16 (emoji presentation)
+    + '\u{1F600}-\u{1F64F}'
+    + '\u{1F300}-\u{1F5FF}'
+    + '\u{1F680}-\u{1F6FF}'
+    + '\u{1F700}-\u{1F77F}'
+    + '\u{1F780}-\u{1F7FF}'
+    + '\u{1F800}-\u{1F8FF}'
+    + '\u{1F900}-\u{1F9FF}'
+    + '\u{1FA00}-\u{1FA6F}'
+    + '\u{1FA70}-\u{1FAFF}'
+    + '\u{2702}-\u{27B0}'
+    + '\u{27BF}'
+    + '\u{FE00}-\u{FE0F}'
+    + '\u{200D}'
+    + '\u{2600}-\u{26FF}'
+    + '\u{2300}-\u{23FF}'
+    + '\u{2B50}'
+    + '\u{2B05}-\u{2B07}'
+    + '\u{2934}-\u{2935}'
+    + '\u{3030}'
+    + '\u{25AA}-\u{25AB}'
+    + '\u{25FB}-\u{25FE}'
+    + '\u{25B6}'
+    + '\u{25C0}'
+    + '\u{203C}'
+    + '\u{2049}'
+    + '\u{2139}'
+    + '\u{2194}-\u{2199}'
+    + '\u{21A9}-\u{21AA}'
+    + '\u{231A}-\u{231B}'
+    + '\u{23E9}-\u{23F3}'
+    + '\u{23F8}-\u{23FA}'
+    + '\u{24C2}'
+    + '\u{2660}'
+    + '\u{2663}'
+    + '\u{2665}-\u{2666}'
+    + '\u{2668}'
+    + '\u{267B}'
+    + '\u{267F}'
+    + '\u{2692}-\u{2697}'
+    + '\u{2699}'
+    + '\u{269B}-\u{269C}'
+    + '\u{26A0}-\u{26A1}'
+    + '\u{26AA}-\u{26AB}'
+    + '\u{26B0}-\u{26B1}'
+    + '\u{26BD}-\u{26BE}'
+    + '\u{26C4}-\u{26C5}'
+    + '\u{26CE}'
+    + '\u{26CF}-\u{26D4}'
+    + '\u{26E9}-\u{26EA}'
+    + '\u{26F0}-\u{26F5}'
+    + '\u{26F7}-\u{26FA}'
+    + '\u{26FD}'
+    + '\u{2702}'
+    + '\u{2705}'
+    + '\u{2708}-\u{270D}'
+    + '\u{270F}'
+    + '\u{2712}'
+    + '\u{2714}'
+    + '\u{2716}'
+    + '\u{271D}'
+    + '\u{2721}'
+    + '\u{2728}'
+    + '\u{2733}-\u{2734}'
+    + '\u{2744}'
+    + '\u{2747}'
+    + '\u{274C}'
+    + '\u{274E}'
+    + '\u{2753}-\u{2755}'
+    + '\u{2757}'
+    + '\u{2763}-\u{2764}'
+    + '\u{2795}-\u{2797}'
+    + '\u{27A1}'
+    + '\u{2934}-\u{2935}'
+    + '\u{2B05}-\u{2B07}'
+    + '\u{2B1B}-\u{2B1C}'
+    + '\u{2B55}'
+    + '\u{1F004}'
+    + '\u{1F0CF}'
+    + '\u{1F170}-\u{1F171}'
+    + '\u{1F17E}-\u{1F17F}'
+    + '\u{1F18E}'
+    + '\u{1F191}-\u{1F19A}'
+    + '\u{1F1E0}-\u{1F1FF}'
+    + '\u{1F201}-\u{1F202}'
+    + '\u{1F21A}'
+    + '\u{1F22F}'
+    + '\u{1F232}-\u{1F23A}'
+    + '\u{1F250}-\u{1F251}'
+    + '\u{E0020}-\u{E007F}'
+    + '\u{FE0F}'
     + ']',
     'gu'
 );
 
-/**
- * Set of text file extensions to include for scanning.
- */
 const TEXT_EXTENSIONS = new Set([
     '.md', '.markdown', '.txt', '.text', '.log',
     '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx',
     '.json', '.xml', '.xhtml', '.svg', '.yaml', '.yml', '.toml',
     '.ini', '.cfg', '.conf', '.csv', '.tsv',
     '.py', '.pyw', '.rb', '.java', '.c', '.cpp', '.h', '.hpp', '.cs',
-    '.go', '.rs', '.swift', '.kt', '.kts', '.scala', '.php', '.pl', '.pm',
+    '.go', '.rs', '.swift', '.kt', '.scala', '.php', '.pl', '.pm',
     '.sh', '.bash', '.zsh', '.fish', '.bat', '.cmd', '.ps1',
     '.sql', '.graphql', '.gql',
     '.tex', '.bib', '.rst', '.adoc', '.org',
@@ -136,23 +127,13 @@ const EXCLUDE_DIRS = new Set([
     'out', 'bin', 'obj',
 ]);
 
-/**
- * Result of purging emojis from a single file.
- */
 export interface PurgeFileResult {
-    /** Relative path from the scan root */
     relPath: string;
-    /** Number of emoji characters removed */
     emojiCount: number;
-    /** Whether the operation succeeded */
     success: boolean;
-    /** Error message if failed */
     error?: string;
 }
 
-/**
- * Summary of a purge operation.
- */
 export interface PurgeSummary {
     filesScanned: number;
     filesModified: number;
@@ -160,31 +141,17 @@ export interface PurgeSummary {
     results: PurgeFileResult[];
 }
 
-/**
- * Service that removes emoji characters from text files.
- * Ported from the Python EmojiPurgeService in the split_merge project.
- */
-export class EmojiPurgeService {
-
-    /**
-     * Remove all emoji characters from the given content string.
-     */
+export class EmojiPurgeService implements IEmojiPurgeService {
     public static removeEmojis(content: string): string {
         return content.replace(EMOJI_REGEX, '');
     }
 
-    /**
-     * Count the number of emoji characters in the content.
-     */
     public static countEmojis(content: string): number {
         const matches = content.match(EMOJI_REGEX);
         if (!matches) return 0;
         return matches.reduce((sum, m) => sum + m.length, 0);
     }
 
-    /**
-     * Check whether a file should be treated as text based on extension or filename.
-     */
     public static isTextFile(filePath: string): boolean {
         const ext = path.extname(filePath).toLowerCase();
         const basename = path.basename(filePath);
@@ -193,7 +160,6 @@ export class EmojiPurgeService {
         if (TEXT_FILENAMES.has(basename)) return true;
         if (basename.startsWith('.env')) return true;
 
-        // No recognized extension - check if binary by looking for null bytes
         if (!ext) {
             try {
                 const fd = fs.openSync(filePath, 'r');
@@ -206,16 +172,11 @@ export class EmojiPurgeService {
                 return false;
             }
         }
-
         return false;
     }
 
-    /**
-     * Recursively find all text files in a directory.
-     */
     public static async findTextFiles(dirPath: string): Promise<string[]> {
         const results: string[] = [];
-
         async function walk(currentPath: string) {
             const stat = await fs.promises.stat(currentPath);
             if (stat.isDirectory()) {
@@ -230,22 +191,23 @@ export class EmojiPurgeService {
                 results.push(currentPath);
             }
         }
-
         await walk(dirPath);
         return results;
     }
 
-    /**
-     * Scan a set of paths (files and/or directories) and purge emojis from all
-     * text files found. Returns a summary of the operation.
-     */
+    public async purgePaths(
+        paths: string[],
+        onProgress?: (msg: string) => void
+    ): Promise<PurgeSummary> {
+        return EmojiPurgeService.purgePaths(paths, onProgress);
+    }
+
     public static async purgePaths(
         paths: string[],
         onProgress?: (message: string) => void
     ): Promise<PurgeSummary> {
         const report = (msg: string) => { if (onProgress) onProgress(msg); };
 
-        // Collect all text files
         const allFiles: string[] = [];
         for (const p of paths) {
             const stat = await fs.promises.stat(p);
@@ -257,7 +219,6 @@ export class EmojiPurgeService {
             }
         }
 
-        // Deduplicate
         const uniqueFiles = [...new Set(allFiles)];
         report(`Found ${uniqueFiles.length} text file(s) to scan.`);
 
@@ -265,7 +226,6 @@ export class EmojiPurgeService {
         let filesModified = 0;
         let totalEmojisRemoved = 0;
 
-        // Determine common root for relative paths
         const commonRoot = EmojiPurgeService.findCommonRoot(paths);
 
         for (const filePath of uniqueFiles) {
@@ -310,9 +270,6 @@ export class EmojiPurgeService {
         };
     }
 
-    /**
-     * Find the common ancestor directory from a list of paths.
-     */
     private static findCommonRoot(paths: string[]): string | null {
         if (paths.length === 0) return null;
         if (paths.length === 1) {
@@ -320,10 +277,8 @@ export class EmojiPurgeService {
             return stat.isDirectory() ? paths[0] : path.dirname(paths[0]);
         }
 
-        // Split all paths into parts
         const splitPaths = paths.map(p => p.split(path.sep));
 
-        // Find common prefix
         let common = splitPaths[0];
         for (let i = 1; i < splitPaths.length; i++) {
             const current = splitPaths[i];
