@@ -12,7 +12,6 @@ export class VaultMerger implements IVaultMerger {
         let writtenCount = 0;
 
         for (const segment of segments) {
-            // Map clean relative destination path
             const cleanFolder = segment.folder.replace(/:/g, '-').replace(/\//g, '-');
             const cleanFilename = segment.filename.replace(/:/g, '-').replace(/\//g, '-');
 
@@ -32,7 +31,6 @@ export class VaultMerger implements IVaultMerger {
                 } else if (mode === 'skip') {
                     continue;
                 }
-                // 'overwrite' does nothing, keeping targetFilePath as is
             }
 
             await fs.promises.writeFile(targetFilePath, segment.content, 'utf8');

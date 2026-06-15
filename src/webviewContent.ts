@@ -31,7 +31,7 @@ export function getWebviewContent(files: string[]): string {
             if (isFolder) {
                 html += `
                     <div class="tree-item folder-item">
-                        <span class="toggle-icon expanded">V</span>
+                        <span class="toggle-icon expanded">v</span>
                         <label class="checkbox-container">
                             <input type="checkbox" class="folder-checkbox" data-path="${fullPath}" checked>
                             <span class="checkmark"></span>
@@ -103,6 +103,8 @@ export function getWebviewContent(files: string[]): string {
             cursor: pointer;
             border-radius: 4px;
             font-size: 13px;
+            display: inline-flex;
+            align-items: center;
         }
         button:hover { background-color: var(--item-hover); }
         button.primary {
@@ -273,8 +275,12 @@ export function getWebviewContent(files: string[]): string {
     <h2>Select Files to Export</h2>
     
     <div class="controls">
-        <button id="expandAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All</button>
-        <button id="collapseAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All</button>
+        <button id="expandAllBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All
+        </button>
+        <button id="collapseAllBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All
+        </button>
     </div>
 
     <div class="tree-container">
@@ -283,7 +289,9 @@ export function getWebviewContent(files: string[]): string {
 
     <div class="footer">
         <span class="count-label" id="countLabel">0 files selected</span>
-        <button id="exportBtn" class="primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export Selected</button>
+        <button id="exportBtn" class="primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export Selected
+        </button>
     </div>
 
     <script>
@@ -308,7 +316,7 @@ export function getWebviewContent(files: string[]): string {
                     ul.style.display = 'block';
                     icon.classList.remove('collapsed');
                     icon.classList.add('expanded');
-                    icon.textContent = 'V';
+                    icon.textContent = 'v';
                 } else {
                     ul.style.display = 'none';
                     icon.classList.remove('expanded');
@@ -323,7 +331,7 @@ export function getWebviewContent(files: string[]): string {
             document.querySelectorAll('.toggle-icon').forEach(icon => {
                 icon.classList.remove('collapsed');
                 icon.classList.add('expanded');
-                icon.textContent = 'V';
+                icon.textContent = 'v';
             });
         });
 

@@ -29,7 +29,7 @@ export function getMergeWebviewContent(files: string[]): string {
             if (isFolder) {
                 html += `
                     <div class="tree-item folder-item">
-                        <span class="toggle-icon expanded">V</span>
+                        <span class="toggle-icon expanded">v</span>
                         <label class="checkbox-container">
                             <input type="checkbox" class="folder-checkbox" data-path="${fullPath}" checked>
                             <span class="checkmark"></span>
@@ -132,6 +132,8 @@ export function getMergeWebviewContent(files: string[]): string {
             letter-spacing: 0.5px;
             margin-bottom: 14px;
             opacity: 0.8;
+            display: flex;
+            align-items: center;
         }
 
         .settings-row {
@@ -252,6 +254,8 @@ export function getMergeWebviewContent(files: string[]): string {
             border-radius: 4px;
             font-size: 12px;
             transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
         }
         button:hover { background-color: var(--surface-hover); border-color: #555; }
         button.primary {
@@ -473,7 +477,7 @@ export function getMergeWebviewContent(files: string[]): string {
             align-items: center;
             gap: 8px;
         }
-        .info-banner .info-icon { font-weight: bold; color: var(--accent); }
+        .info-banner .info-icon { display: flex; align-items: center; color: var(--accent); }
     </style>
 </head>
 <body>
@@ -527,10 +531,10 @@ export function getMergeWebviewContent(files: string[]): string {
     </div>
 
     <div class="toolbar">
-        <button id="expandAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All</button>
-        <button id="collapseAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All</button>
-        <button id="selectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 16 10"/></svg>Select All</button>
-        <button id="deselectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Deselect All</button>
+        <button id="expandAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="6 9 12 15 18 9"/></svg>Expand All</button>
+        <button id="collapseAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="18 15 12 9 6 15"/></svg>Collapse All</button>
+        <button id="selectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 11 12 14 16 10"/></svg>Select All</button>
+        <button id="deselectAllBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Deselect All</button>
         <span class="toolbar-spacer"></span>
         <input type="text" class="search-box" id="searchBox" placeholder="Search files...">
     </div>
@@ -545,7 +549,7 @@ export function getMergeWebviewContent(files: string[]): string {
             <span class="stat-item"><span class="stat-dot size"></span> ~<span id="estSize">0</span> KB est.</span>
             <span class="stat-item"><span class="stat-dot parts"></span> ~<span id="estParts">1</span> output file(s)</span>
         </div>
-        <button id="mergeBtn" class="primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Merge & Export</button>
+        <button id="mergeBtn" class="primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Merge & Export</button>
     </div>
 
     <script>
@@ -592,7 +596,7 @@ export function getMergeWebviewContent(files: string[]): string {
                     ul.style.display = 'block';
                     icon.classList.remove('collapsed');
                     icon.classList.add('expanded');
-                    icon.textContent = 'V';
+                    icon.textContent = 'v';
                 } else {
                     ul.style.display = 'none';
                     icon.classList.remove('expanded');
@@ -607,7 +611,7 @@ export function getMergeWebviewContent(files: string[]): string {
             document.querySelectorAll('.toggle-icon').forEach(icon => {
                 icon.classList.remove('collapsed');
                 icon.classList.add('expanded');
-                icon.textContent = 'V';
+                icon.textContent = 'v';
             });
         });
 

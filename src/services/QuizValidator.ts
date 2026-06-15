@@ -18,7 +18,6 @@ export class QuizValidator implements IQuizValidator {
             }
         };
 
-        // Validate Frontmatter
         if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
             report.errors.push([1, "File must begin with a YAML frontmatter block (---)"]);
         }
@@ -39,7 +38,6 @@ export class QuizValidator implements IQuizValidator {
             report.warnings.push([2, "No valid internal wiki-links [[Link]] found in frontmatter sources"]);
         }
 
-        // Split into Question Blocks
         const body = content.substring(closingYaml + 5);
         const questionBlocks = body.split(/\n(?=>\s*\[!question\])/);
 
@@ -89,7 +87,6 @@ export class QuizValidator implements IQuizValidator {
                 }
             } else if (isMc) {
                 report.stats.multiple_choice++;
-                // extract options
                 const optionMatches = [...block.matchAll(/>\s+([a-d])\)/g)];
                 const options = optionMatches.map(m => m[1]);
                 

@@ -9,7 +9,6 @@ export class VaultSplitter implements IVaultSplitter {
     ): ParsedSegment[] {
         const segments: ParsedSegment[] = [];
         
-        // Compile regexes
         const compiledRules = rules.map(rule => {
             return {
                 type: rule.type,
@@ -49,7 +48,6 @@ export class VaultSplitter implements IVaultSplitter {
                     saveSegment();
                     currentContent = [];
 
-                    // Extract groups
                     const groupDict: Record<string, string> = {};
                     for (let i = 1; i < match.length; i++) {
                         if (match[i] !== undefined) {
@@ -57,7 +55,6 @@ export class VaultSplitter implements IVaultSplitter {
                         }
                     }
                     
-                    // Extract named groups if any
                     if (match.groups) {
                         for (const [k, v] of Object.entries(match.groups)) {
                             if (v !== undefined) {
@@ -66,11 +63,9 @@ export class VaultSplitter implements IVaultSplitter {
                         }
                     }
 
-                    // Interpolate folder
                     if (rule.folderFormat) {
                         currentFolder = this.interpolate(rule.folderFormat, groupDict);
                     }
-                    // Interpolate file
                     if (rule.fileFormat) {
                         currentFile = this.interpolate(rule.fileFormat, groupDict);
                     } else {

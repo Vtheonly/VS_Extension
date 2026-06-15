@@ -56,7 +56,6 @@ export class FileRenamer implements IFileRenamer {
     public async executeRename(targetDir: string, mapping: Record<string, string>): Promise<void> {
         const tempMappings: Record<string, string> = {};
 
-        // Phase 1: Rename to unique temp names to prevent intermediate collisions
         let tempCounter = 0;
         for (const [oldName, newName] of Object.entries(mapping)) {
             const oldPath = path.join(targetDir, oldName);
@@ -69,12 +68,10 @@ export class FileRenamer implements IFileRenamer {
             tempMappings[tempName] = newName;
         }
 
-        // Phase 2: Rename from temp names to final names
         for (const [tempName, newName] of Object.entries(tempMappings)) {
             const tempPath = path.join(targetDir, tempName);
             const finalPath = path.join(targetDir, newName);
 
-            // Ensure destination directories exist
             const destDir = path.dirname(finalPath);
             if (!fs.existsSync(destDir)) {
                 await fs.promises.mkdir(destDir, { recursive: true });

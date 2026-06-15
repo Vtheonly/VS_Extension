@@ -10,7 +10,16 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:smart-exporter.exportFiles",
+    "onCommand:smart-exporter.mergeExport",
+    "onCommand:smart-exporter.purgeEmojis",
+    "onCommand:smart-exporter.splitVault",
+    "onCommand:smart-exporter.mergeVault",
+    "onCommand:smart-exporter.fixMermaid",
+    "onCommand:smart-exporter.validateQuizzes",
+    "onCommand:smart-exporter.renameFiles"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
