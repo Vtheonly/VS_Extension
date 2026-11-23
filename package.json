@@ -1,70 +1,75 @@
 {
-  "name": "vscode-ext-v2",
-  "publisher": "local",
-  "displayName": "VSCode Ext V2",
-  "description": "A VS Code extension with file export, merge export, emoji purge, split vault, merge vault, mermaid fixing, quiz validation, and renaming capabilities.",
-  "version": "0.0.1",
+  "$schema": "https://json.schemastore.org/package",
+  "name": "smart-exporter",
+  "displayName": "Smart Exporter & Codebase Purifier",
+  "description": "Codebase purification, AST skeletonization, and persistent export pipelines",
+  "version": "1.2.1",
+  "publisher": "mersel",
   "engines": {
     "vscode": "^1.80.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onCommand:smart-exporter.exportFiles",
-    "onCommand:smart-exporter.mergeExport",
-    "onCommand:smart-exporter.purgeEmojis",
-    "onCommand:smart-exporter.splitVault",
-    "onCommand:smart-exporter.mergeVault",
-    "onCommand:smart-exporter.fixMermaid",
-    "onCommand:smart-exporter.validateQuizzes",
-    "onCommand:smart-exporter.renameFiles"
-  ],
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:smart-exporter.exportFiles",
+    "onCommand:smart-exporter.toggleExportFile",
+    "onCommand:smart-exporter.selectProfile"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "smart-exporter.exportFiles",
-        "title": "Smart Exporter: Dashboard Hub"
+        "title": "Smart Exporter: Open Dashboard"
       },
       {
-        "command": "smart-exporter.mergeExport",
-        "title": "Smart Exporter: Merge & Export"
+        "command": "smart-exporter.toggleExportFile",
+        "title": "Smart Exporter: Toggle in Export List",
+        "icon": "$(checklist)"
       },
       {
-        "command": "smart-exporter.purgeEmojis",
-        "title": "Smart Exporter: Purge Emojis"
-      },
-      {
-        "command": "smart-exporter.splitVault",
-        "title": "Smart Exporter: Split Vault Document"
-      },
-      {
-        "command": "smart-exporter.mergeVault",
-        "title": "Smart Exporter: Merge Vault Workspace"
-      },
-      {
-        "command": "smart-exporter.fixMermaid",
-        "title": "Smart Exporter: Fix Mermaid Diagrams"
-      },
-      {
-        "command": "smart-exporter.validateQuizzes",
-        "title": "Smart Exporter: Validate Quiz Files"
-      },
-      {
-        "command": "smart-exporter.renameFiles",
-        "title": "Smart Exporter: Safe Renamer"
+        "command": "smart-exporter.selectProfile",
+        "title": "Smart Exporter: Select Active Profile"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "smart-exporter.toggleExportFile",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote",
+          "group": "z_smartExporter@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "smart-exporter.toggleExportFile",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote",
+          "group": "z_smartExporter@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "smart-exporter.toggleExportFile",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote",
+          "group": "1_smartExporter@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "smart-exporter.toggleExportFile",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote",
+          "group": "7_smartExporter@1"
+        }
+      ]
+    }
+  },
+  "bin": {
+    "purification": "./bin/cli.js",
+    "skeletonize": "./bin/cli.js"
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
-  },
-  "devDependencies": {
-    "@types/node": "^18.19.130",
-    "@types/vscode": "^1.80.0",
-    "typescript": "^5.1.3"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-git-tag-version --allow-missing-repository"
   }
 }

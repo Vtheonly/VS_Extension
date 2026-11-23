@@ -2,15 +2,30 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
-import { IMergeExportPipeline } from '../core/interfaces';
+import { IMergeExportPipeline, ExportTransformOptions } from '../core/interfaces';
+import { PurificationService } from './PurificationService';
+import { SkeletonizerService } from './SkeletonizerService';
 
 export class MergeExportPipeline implements IMergeExportPipeline {
     public async execute(
         absPaths: string[],
         rootPath: string,
         mode: string,
-        limitKB: number
+        limitKB: number,
+        transformOpts?: ExportTransformOptions
     ): Promise<void> {
+        let relPaths = absPaths.map(p => path.relative(rootPath, p).replace(/\\/g, '/'));
+
+        // 1. Purify export list if enabled
+        if (transformOpts?.purify) {
+            const result = PurificationService.filterFilesForExport(relPaths, {
+                removeMarkdown: transformOpts.removeMarkdown,
+                removeLockfiles: transformOpts.removeLockfiles,
+                removeDumps: true,
+            });
+            relPaths = result.kept;
+        }
+
         const projectName = path.basename(rootPath);
         const dateStr = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
         const timestamp = dateStr.replace(/[: ]/g, '-');
@@ -20,20 +35,37 @@ export class MergeExportPipeline implements IMergeExportPipeline {
             fs.mkdirSync(dstDir, { recursive: true });
         }
 
-        const relPaths = absPaths.map(p => path.relative(rootPath, p).split(path.sep).join('/'));
         const fileContents = new Map<string, string>();
+
+        // Precompute folder line counts for medium mode
+        const folderLineCounts = new Map<string, number>();
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "Reading files...",
+            title: "Reading & transforming export files...",
             cancellable: false
         }, async () => {
-            for (let i = 0; i < absPaths.length; i++) {
+            for (const rel of relPaths) {
                 try {
-                    const content = await fs.promises.readFile(absPaths[i], 'utf8');
-                    fileContents.set(relPaths[i], content);
+                    let content = await fs.promises.readFile(path.join(rootPath, rel), 'utf8');
+                    const folder = path.dirname(rel);
+                    folderLineCounts.set(folder, (folderLineCounts.get(folder) || 0) + SkeletonizerService.countLines(content));
+                    fileContents.set(rel, content);
                 } catch {
-                    fileContents.set(relPaths[i], '// [Error reading file]');
+                    fileContents.set(rel, '// [Error reading file]');
+                }
+            }
+
+            // Apply Skeletonizer on copy
+            if (transformOpts?.skeletonize && transformOpts.skeletonMode !== 'none') {
+                for (const [rel, content] of fileContents.entries()) {
+                    const ext = path.extname(rel);
+                    const folder = path.dirname(rel);
+                    const shouldSkel = transformOpts.skeletonMode !== 'medium' || (folderLineCounts.get(folder) || 0) > 200;
+                    if (shouldSkel) {
+                        const transformed = SkeletonizerService.skeletonizeCode(content, ext, transformOpts.skeletonMode);
+                        fileContents.set(rel, transformed);
+                    }
                 }
             }
         });
@@ -52,7 +84,7 @@ export class MergeExportPipeline implements IMergeExportPipeline {
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "Merging & exporting...",
+            title: "Writing merged export bundle...",
             cancellable: false
         }, async () => {
             for (const [groupName, groupFiles] of groups.entries()) {
@@ -116,8 +148,7 @@ export class MergeExportPipeline implements IMergeExportPipeline {
             `Merged ${relPaths.length} files into ${totalOutputFiles} output file(s) -> ${dstDir}`
         );
 
-        const uri = vscode.Uri.file(dstDir);
-        vscode.env.openExternal(uri);
+        vscode.env.openExternal(vscode.Uri.file(dstDir));
     }
 
     private groupByFolder(relPaths: string[]): Map<string, string[]> {

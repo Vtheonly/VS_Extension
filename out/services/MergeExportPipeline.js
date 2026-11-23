@@ -38,8 +38,20 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const vscode = __importStar(require("vscode"));
+const PurificationService_1 = require("./PurificationService");
+const SkeletonizerService_1 = require("./SkeletonizerService");
 class MergeExportPipeline {
-    async execute(absPaths, rootPath, mode, limitKB) {
+    async execute(absPaths, rootPath, mode, limitKB, transformOpts) {
+        let relPaths = absPaths.map(p => path.relative(rootPath, p).replace(/\\/g, '/'));
+        // 1. Purify export list if enabled
+        if (transformOpts?.purify) {
+            const result = PurificationService_1.PurificationService.filterFilesForExport(relPaths, {
+                removeMarkdown: transformOpts.removeMarkdown,
+                removeLockfiles: transformOpts.removeLockfiles,
+                removeDumps: true,
+            });
+            relPaths = result.kept;
+        }
         const projectName = path.basename(rootPath);
         const dateStr = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
         const timestamp = dateStr.replace(/[: ]/g, '-');
@@ -47,20 +59,35 @@ class MergeExportPipeline {
         if (!fs.existsSync(dstDir)) {
             fs.mkdirSync(dstDir, { recursive: true });
         }
-        const relPaths = absPaths.map(p => path.relative(rootPath, p).split(path.sep).join('/'));
         const fileContents = new Map();
+        // Precompute folder line counts for medium mode
+        const folderLineCounts = new Map();
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "Reading files...",
+            title: "Reading & transforming export files...",
             cancellable: false
         }, async () => {
-            for (let i = 0; i < absPaths.length; i++) {
+            for (const rel of relPaths) {
                 try {
-                    const content = await fs.promises.readFile(absPaths[i], 'utf8');
-                    fileContents.set(relPaths[i], content);
+                    let content = await fs.promises.readFile(path.join(rootPath, rel), 'utf8');
+                    const folder = path.dirname(rel);
+                    folderLineCounts.set(folder, (folderLineCounts.get(folder) || 0) + SkeletonizerService_1.SkeletonizerService.countLines(content));
+                    fileContents.set(rel, content);
                 }
                 catch {
-                    fileContents.set(relPaths[i], '// [Error reading file]');
+                    fileContents.set(rel, '// [Error reading file]');
+                }
+            }
+            // Apply Skeletonizer on copy
+            if (transformOpts?.skeletonize && transformOpts.skeletonMode !== 'none') {
+                for (const [rel, content] of fileContents.entries()) {
+                    const ext = path.extname(rel);
+                    const folder = path.dirname(rel);
+                    const shouldSkel = transformOpts.skeletonMode !== 'medium' || (folderLineCounts.get(folder) || 0) > 200;
+                    if (shouldSkel) {
+                        const transformed = SkeletonizerService_1.SkeletonizerService.skeletonizeCode(content, ext, transformOpts.skeletonMode);
+                        fileContents.set(rel, transformed);
+                    }
                 }
             }
         });
@@ -78,7 +105,7 @@ class MergeExportPipeline {
         let totalOutputFiles = 0;
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "Merging & exporting...",
+            title: "Writing merged export bundle...",
             cancellable: false
         }, async () => {
             for (const [groupName, groupFiles] of groups.entries()) {
@@ -131,8 +158,7 @@ class MergeExportPipeline {
             }
         });
         vscode.window.showInformationMessage(`Merged ${relPaths.length} files into ${totalOutputFiles} output file(s) -> ${dstDir}`);
-        const uri = vscode.Uri.file(dstDir);
-        vscode.env.openExternal(uri);
+        vscode.env.openExternal(vscode.Uri.file(dstDir));
     }
     groupByFolder(relPaths) {
         const groups = new Map();

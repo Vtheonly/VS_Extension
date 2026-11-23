@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-21T19:26:11.941Z",
+  "profile": "default",
+  "files": {
+    "core/interfaces.ts": true,
+    "core/logger.ts": true,
+    "emojiPurgeService.ts": true,
+    "extension.ts": true,
+    "mergeWebviewContent.ts": true,
+    "services/ClassicExportPipeline.ts": false,
+    "services/FileRenamer.ts": true,
+    "services/FileScanner.ts": false,
+    "services/MergeExportPipeline.ts": true,
+    "services/MermaidFixer.ts": true,
+    "services/PurificationService.ts": true,
+    "services/QuizValidator.ts": true,
+    "services/SelectionStateManager.ts": true,
+    "services/SkeletonizerService.ts": true,
+    "services/VaultMerger.ts": true,
+    "services/VaultSplitter.ts": true,
+    "webviewContent.ts": true
+  }
+}

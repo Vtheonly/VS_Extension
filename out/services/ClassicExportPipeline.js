@@ -38,15 +38,19 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const vscode = __importStar(require("vscode"));
+const PurificationService_1 = require("./PurificationService");
+const SkeletonizerService_1 = require("./SkeletonizerService");
 class ClassicExportPipeline {
-    async execute(files, rootPath) {
-        const basenameMap = new Map();
-        for (const filePath of files) {
-            const base = path.basename(filePath);
-            if (!basenameMap.has(base)) {
-                basenameMap.set(base, []);
-            }
-            basenameMap.get(base).push(filePath);
+    async execute(files, rootPath, transformOpts) {
+        let exportRelPaths = files.map(f => path.relative(rootPath, f).replace(/\\/g, '/'));
+        // 1. Purify export bundle if enabled
+        if (transformOpts?.purify) {
+            const result = PurificationService_1.PurificationService.filterFilesForExport(exportRelPaths, {
+                removeMarkdown: transformOpts.removeMarkdown,
+                removeLockfiles: transformOpts.removeLockfiles,
+                removeDumps: true,
+            });
+            exportRelPaths = result.kept;
         }
         const homeDir = os.homedir();
         const projectName = path.basename(rootPath);
@@ -58,33 +62,63 @@ class ClassicExportPipeline {
         if (!fs.existsSync(dstDir)) {
             fs.mkdirSync(dstDir, { recursive: true });
         }
+        const basenameMap = new Map();
+        for (const rel of exportRelPaths) {
+            const base = path.basename(rel);
+            if (!basenameMap.has(base)) {
+                basenameMap.set(base, []);
+            }
+            basenameMap.get(base).push(rel);
+        }
+        // Compute folder lines if MEDIUM mode is selected
+        const folderLineCounts = new Map();
+        if (transformOpts?.skeletonize && transformOpts.skeletonMode === 'medium') {
+            for (const rel of exportRelPaths) {
+                const folder = path.dirname(rel);
+                try {
+                    const src = await fs.promises.readFile(path.join(rootPath, rel), 'utf8');
+                    folderLineCounts.set(folder, (folderLineCounts.get(folder) || 0) + SkeletonizerService_1.SkeletonizerService.countLines(src));
+                }
+                catch { }
+            }
+        }
         const projectStructureLines = [];
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: "Exporting files...",
             cancellable: false
         }, async () => {
-            for (const [basename, paths] of basenameMap.entries()) {
-                if (paths.length === 1) {
-                    const srcPath = paths[0];
-                    await fs.promises.copyFile(srcPath, path.join(dstDir, basename + '.txt'));
-                    projectStructureLines.push(path.relative(rootPath, srcPath).split(path.sep).join('/'));
-                }
-                else {
-                    for (const srcPath of paths) {
-                        let relPath = path.relative(rootPath, srcPath);
-                        if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
-                            relPath = srcPath.replace(/^([a-zA-Z]:\\|\/)/, '');
-                        }
-                        const safeName = relPath.split(path.sep).join('_') + '.txt';
-                        await fs.promises.copyFile(srcPath, path.join(dstDir, safeName));
-                        projectStructureLines.push(path.relative(rootPath, srcPath).split(path.sep).join('/'));
+            for (const [basename, relPaths] of basenameMap.entries()) {
+                for (const rel of relPaths) {
+                    const srcPath = path.join(rootPath, rel);
+                    let content = '';
+                    try {
+                        content = await fs.promises.readFile(srcPath, 'utf8');
                     }
+                    catch {
+                        content = '// [Error reading file]';
+                    }
+                    // Apply Skeletonization on the exported copy
+                    if (transformOpts?.skeletonize && transformOpts.skeletonMode !== 'none') {
+                        const ext = path.extname(rel);
+                        const folder = path.dirname(rel);
+                        const shouldSkel = transformOpts.skeletonMode !== 'medium' || (folderLineCounts.get(folder) || 0) > 200;
+                        if (shouldSkel) {
+                            content = SkeletonizerService_1.SkeletonizerService.skeletonizeCode(content, ext, transformOpts.skeletonMode);
+                        }
+                    }
+                    let outFilename = basename + '.txt';
+                    if (relPaths.length > 1) {
+                        outFilename = rel.replace(/\//g, '_') + '.txt';
+                    }
+                    await fs.promises.writeFile(path.join(dstDir, outFilename), content, 'utf8');
+                    projectStructureLines.push(rel);
                 }
             }
             await fs.promises.writeFile(path.join(dstDir, 'project_structure.txt'), projectStructureLines.join('\n'), 'utf8');
         });
-        vscode.window.showInformationMessage(`Exported ${files.length} files -> ${dstDir}`);
+        vscode.window.showInformationMessage(`Exported ${exportRelPaths.length} files -> ${dstDir}`);
+        vscode.env.openExternal(vscode.Uri.file(dstDir));
     }
 }
 exports.ClassicExportPipeline = ClassicExportPipeline;

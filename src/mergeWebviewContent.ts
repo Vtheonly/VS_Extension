@@ -1,5 +1,6 @@
+import * as vscode from 'vscode';
 import { getWebviewContent } from './webviewContent';
 
-export function getMergeWebviewContent(files: string[]): string {
-    return getWebviewContent(files);
+export function getMergeWebviewContent(webview: vscode.Webview, defaultWorkspacePath = ''): string {
+    return getWebviewContent(webview, defaultWorkspacePath);
 }

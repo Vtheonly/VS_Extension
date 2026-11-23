@@ -54,6 +54,21 @@ class FileScanner {
         }
         return results;
     }
+    isDefaultIncluded(filePath, rootPath) {
+        const resolvedFile = path.resolve(filePath);
+        const resolvedRoot = path.resolve(rootPath);
+        const rel = path.relative(resolvedRoot, resolvedFile);
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+            return false;
+        }
+        const parts = rel.split(path.sep);
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (this.excludeDirs.has(parts[i])) {
+                return false;
+            }
+        }
+        return this.shouldIncludeFile(resolvedFile);
+    }
     shouldIncludeFile(filePath) {
         const basename = path.basename(filePath);
         const ext = path.extname(filePath);

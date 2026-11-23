@@ -1,18 +1,25 @@
 import { PurgeSummary } from '../emojiPurgeService';
 
-export interface ILogger {
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
-    show(): void;
-}
-
 export interface IFileScanner {
     scan(paths: string[]): Promise<string[]>;
 }
 
+export type SkeletonMode = 'none' | 'light' | 'medium' | 'full';
+
+export interface ExportTransformOptions {
+    purify: boolean;
+    removeMarkdown: boolean;
+    removeLockfiles: boolean;
+    skeletonize: boolean;
+    skeletonMode: SkeletonMode;
+}
+
 export interface IExportPipeline {
-    execute(files: string[], rootPath: string): Promise<void>;
+    execute(
+        files: string[],
+        rootPath: string,
+        transformOpts?: ExportTransformOptions
+    ): Promise<void>;
 }
 
 export interface IMergeExportPipeline {
@@ -20,7 +27,8 @@ export interface IMergeExportPipeline {
         absPaths: string[],
         rootPath: string,
         mode: string,
-        limitKB: number
+        limitKB: number,
+        transformOpts?: ExportTransformOptions
     ): Promise<void>;
 }
 
@@ -90,4 +98,27 @@ export interface IFileRenamer {
         replacementFormat: string
     ): Record<string, string>;
     executeRename(targetDir: string, mapping: Record<string, string>): Promise<void>;
+}
+
+export interface FileMetric {
+    relPath: string;
+    linesBefore: number;
+    linesAfter: number;
+    bytesBefore: number;
+    bytesAfter: number;
+    modified: boolean;
+}
+
+export interface SkeletonizationReport {
+    mode: SkeletonMode;
+    totalLinesBefore: number;
+    totalLinesAfter: number;
+    linesRemoved: number;
+    reductionPercentage: number;
+    filesScanned: number;
+    filesSkeletonized: number;
+    filesUnchanged: number;
+    filesRemoved: number;
+    markdownRemoved: number;
+    typeStats: Record<string, { files: number; before: number; after: number }>;
 }
